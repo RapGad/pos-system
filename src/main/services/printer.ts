@@ -51,7 +51,20 @@ const generateBarcodeBase64 = async (text: string): Promise<string> => {
 
 export const printReceipt = async (sale: any) => {
   const settings = getSettings();
+  const is58mm = settings.printer_paper_width === '58mm';
+  const width = is58mm ? 32 : 48; // Approximate character width for standard fonts
   
+  // Helper for two-column layout (Name ...... Price)
+  const twoColumns = (left: string, right: string): string => {
+    const spaceNeeded = width - left.length - right.length;
+    if (spaceNeeded < 1) {
+      // If text is too long, truncate or wrap (simple truncate for now)
+      const availableForLeft = width - right.length - 1;
+      return left.substring(0, availableForLeft) + ' ' + right;
+    }
+    return left + ' '.repeat(spaceNeeded) + right;
+  };
+
   return new Promise((resolve, reject) => {
     try {
       // Parse VID/PID from settings if available, or try to find the first printer
@@ -82,6 +95,7 @@ export const printReceipt = async (sale: any) => {
         }
 
         try {
+          // Initialize printer
           printer
             .font('A')
             .align('CT')
@@ -89,52 +103,74 @@ export const printReceipt = async (sale: any) => {
             .size(1, 1)
             .text(settings.store_name)
             .style('NORMAL')
-            .size(1, 1)
+            .size(1, 1) // Reset size to normal (1,1 is standard)
             .text(settings.store_address)
             .text(settings.store_phone)
-            .text('--------------------------------')
+            .text('-'.repeat(width))
             .text(`Receipt: ${sale.receipt_number}`)
             .text(new Date(sale.created_at || Date.now()).toLocaleString())
-            .text('--------------------------------')
-            .align('LT');
+            .text('-'.repeat(width))
+            .align('LT'); // Left align for items
 
           // Items
           sale.items.forEach((item: any) => {
             const total = (item.price_at_sale * item.quantity / 100).toFixed(2);
-            printer.text(`${item.name}`);
-            printer.tableCustom([
-              { text: `${item.quantity} x ${(item.price_at_sale / 100).toFixed(2)}`, align: 'LEFT', width: 0.65 },
-              { text: `${settings.currency_symbol}${total}`, align: 'RIGHT', width: 0.35 }
-            ] as any);
+            const priceStr = `${settings.currency_symbol}${total}`;
+            const qtyStr = `${item.quantity} x ${(item.price_at_sale / 100).toFixed(2)}`;
+            
+            // Print name on its own line if it's long, or just print it
+            printer.text(item.name);
+            // Print qty and price on the next line
+            printer.text(twoColumns(qtyStr, priceStr));
           });
 
-          printer.align('CT').text('--------------------------------').align('RT');
+          printer.align('CT').text('-'.repeat(width)).align('RT'); // Right align for totals
 
           // Totals
           const totalAmount = (sale.total_amount / 100).toFixed(2);
           printer.text(`TOTAL: ${settings.currency_symbol}${totalAmount}`);
           printer.text(`Payment: ${sale.payment_method?.toUpperCase() || 'CASH'}`);
 
-          printer.align('CT').text('--------------------------------');
+          printer.align('CT').text('-'.repeat(width));
           
           // Footer
           if (settings.receipt_footer) {
             printer.text(settings.receipt_footer);
           }
           
-          // Barcode
-          printer.barcode(sale.receipt_number, 'CODE128', { width: 2, height: 50 } as any);
+          // Barcode - simplified or disabled if causing issues
+          // The "random numbers" issue is often caused by barcode commands on incompatible printers.
+          // We'll try a standard CODE39 which is widely supported, or skip it if needed.
+          // For now, let's try to print it but catch errors, and ensure we feed paper first.
+          printer.feed(1);
+          try {
+             // Using CODE39 as it's very common, but it requires uppercase alphanumeric only usually.
+             // If receipt_number has special chars, this might fail.
+             // Let's stick to text for the receipt number for now to be safe, 
+             // as the user specifically mentioned "random numbers" appearing.
+             // printer.barcode(sale.receipt_number, 'CODE39', { width: 1, height: 50 });
+             printer.text(`*${sale.receipt_number}*`); // Text representation
+          } catch (e) {
+             console.warn('Barcode printing skipped', e);
+          }
           
           // Cut
           printer.cut();
           
           // Close
-          printer.close();
-          resolve(true);
+          // Important: Some printers need a small delay before closing to finish printing buffer
+          setTimeout(() => {
+            try {
+              printer.close();
+              resolve(true);
+            } catch (e) {
+              resolve(true); // Ignore close errors
+            }
+          }, 1000);
+          
         } catch (printError) {
           console.error('Error sending commands to printer:', printError);
           reject(printError);
-          // Ensure we try to close if possible, though close() might throw if not open
           try { printer.close(); } catch (e) {}
         }
       });
