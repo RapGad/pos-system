@@ -79,8 +79,20 @@ class CustomUSBAdapter {
         throw new Error('No interface found');
       }
 
-      if (printerInterface.isKernelDriverActive()) {
-        printerInterface.detachKernelDriver();
+      if (!printerInterface) {
+        throw new Error('No interface found');
+      }
+
+      try {
+        if (printerInterface.isKernelDriverActive()) {
+          try {
+            printerInterface.detachKernelDriver();
+          } catch (e) {
+            console.warn('Could not detach kernel driver:', e);
+          }
+        }
+      } catch (e) {
+        console.warn('Could not check kernel driver status:', e);
       }
 
       printerInterface.claim();
