@@ -147,8 +147,9 @@ export const printReceipt = async (sale: any) => {
 
 export const generateReceiptHTML = async (sale: any) => {
   const settings = getSettings();
-  const width = settings.printer_paper_width === '58mm' ? '190px' : '270px';
-  const fontSize = settings.printer_paper_width === '58mm' ? '10px' : '12px';
+  // 58mm is roughly 200-220px printable, 80mm is roughly 280-300px printable in CSS pixels usually
+  // But for preview, we want to simulate the physical look.
+  const cssWidth = settings.printer_paper_width === '58mm' ? '220px' : '300px';
   
   // Generate barcode
   let barcodeImg = '';
@@ -164,54 +165,115 @@ export const generateReceiptHTML = async (sale: any) => {
       <head>
         <meta charset="UTF-8">
         <style>
+          @import url('https://fonts.googleapis.com/css2?family=Courier+Prime&display=swap');
+          
           body { 
-            font-family: 'Courier New', monospace; 
-            width: ${width}; 
-            margin: 0; 
-            padding: 0; 
-            font-size: ${fontSize}; 
+            font-family: 'Courier Prime', 'Courier New', monospace; 
+            width: ${cssWidth}; 
+            margin: 0 auto; 
+            padding: 10px; 
+            background-color: #fff;
+            color: #000;
+            font-size: 12px;
             line-height: 1.2;
-            color: black;
           }
-          .header { text-align: center; margin-bottom: 10px; }
-          .header h3 { margin: 0 0 5px 0; font-size: 1.2em; font-weight: bold; }
-          .header p { margin: 2px 0; }
           
-          .divider { border-top: 1px dashed black; margin: 5px 0; }
+          /* Reset box sizing */
+          * { box-sizing: border-box; }
+
+          .header { text-align: center; margin-bottom: 15px; }
+          .header h1 { margin: 0 0 5px 0; font-size: 16px; font-weight: bold; text-transform: uppercase; }
+          .header p { margin: 2px 0; font-size: 12px; }
           
-          .items { margin-bottom: 5px; }
-          .item { display: flex; justify-content: space-between; margin-bottom: 2px; }
-          .item-name { flex: 1; padding-right: 5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-          .item-qty { width: 30px; text-align: center; }
-          .item-price { width: 60px; text-align: right; }
+          .divider { 
+            border-top: 1px dashed #000; 
+            margin: 10px 0; 
+            width: 100%;
+          }
           
-          .totals { margin-top: 5px; }
-          .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
-          .total-row { font-weight: bold; font-size: 1.1em; margin-top: 5px; }
+          .meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            margin-bottom: 10px;
+          }
+
+          .items-header {
+            display: flex;
+            font-weight: bold;
+            border-bottom: 1px solid #000;
+            padding-bottom: 5px;
+            margin-bottom: 5px;
+          }
           
-          .footer { text-align: center; margin-top: 15px; font-size: 0.9em; }
-          .barcode { text-align: center; margin-top: 10px; }
-          .barcode img { max-width: 100%; }
+          .items { margin-bottom: 10px; }
+          .item { 
+            display: flex; 
+            margin-bottom: 5px; 
+            align-items: flex-start;
+          }
+          
+          .col-name { flex: 1; padding-right: 5px; word-break: break-all; }
+          .col-qty { width: 30px; text-align: center; flex-shrink: 0; }
+          .col-price { width: 60px; text-align: right; flex-shrink: 0; }
+          
+          .totals { margin-top: 10px; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+          .total-row { 
+            font-weight: bold; 
+            font-size: 14px; 
+            margin-top: 10px; 
+            border-top: 1px solid #000; 
+            border-bottom: 1px solid #000;
+            padding: 5px 0;
+          }
+          
+          .footer { text-align: center; margin-top: 20px; font-size: 11px; }
+          .barcode { text-align: center; margin-top: 15px; }
+          .barcode img { max-width: 100%; height: auto; }
+          
+          /* Simulate paper cut */
+          .cut-line {
+            border-top: 1px dotted #ccc;
+            margin-top: 20px;
+            padding-top: 5px;
+            text-align: center;
+            color: #999;
+            font-size: 10px;
+          }
         </style>
       </head>
       <body>
         <div class="header">
-          <h3>${settings.store_name}</h3>
+          <h1>${settings.store_name}</h1>
           <p>${settings.store_address}</p>
           <p>${settings.store_phone}</p>
-          <div class="divider"></div>
-          <p>Receipt #${sale.receipt_number}</p>
-          <p>${new Date(sale.created_at || Date.now()).toLocaleString()}</p>
         </div>
         
         <div class="divider"></div>
         
+        <div class="meta">
+          <span>${new Date(sale.created_at || Date.now()).toLocaleDateString()}</span>
+          <span>${new Date(sale.created_at || Date.now()).toLocaleTimeString()}</span>
+        </div>
+        <div class="meta">
+          <span>Receipt: ${sale.receipt_number}</span>
+        </div>
+
+        <div class="divider"></div>
+        
+        <div class="items-header">
+          <span class="col-name">Item</span>
+          <span class="col-qty">Qty</span>
+          <span class="col-price">Total</span>
+        </div>
+        
         <div class="items">
           ${sale.items.map((item: any) => `
             <div class="item">
-              <span class="item-name">${item.name}</span>
-              <span class="item-qty">x${item.quantity}</span>
-              <span class="item-price">${settings.currency_symbol}${(item.price_at_sale / 100).toFixed(2)}</span>
+              <span class="col-name">${item.name}</span>
+              <span class="col-qty">${item.quantity}</span>
+              <span class="col-price">${settings.currency_symbol}${(item.price_at_sale * item.quantity / 100).toFixed(2)}</span>
             </div>
           `).join('')}
         </div>
@@ -233,13 +295,11 @@ export const generateReceiptHTML = async (sale: any) => {
             <span>TOTAL</span>
             <span>${settings.currency_symbol}${(sale.total_amount / 100).toFixed(2)}</span>
           </div>
-          <div class="row">
-            <span>Payment</span>
+          <div class="row" style="margin-top: 5px;">
+            <span>Payment Method</span>
             <span>${sale.payment_method?.toUpperCase() || 'CASH'}</span>
           </div>
         </div>
-        
-        <div class="divider"></div>
         
         <div class="footer">
           <p>${settings.receipt_footer}</p>
@@ -248,8 +308,6 @@ export const generateReceiptHTML = async (sale: any) => {
             <img src="${barcodeImg}" alt="Barcode" />
           </div>
           ` : ''}
-          <!-- Add extra space for paper cut -->
-          <div style="height: 20px;"></div>
         </div>
       </body>
     </html>
