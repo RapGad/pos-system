@@ -62,8 +62,11 @@ export const printReceipt = async (htmlContent: string) => {
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     return new Promise((resolve, reject) => {
+      // If no printer is selected, default to showing the dialog
+      const shouldShowDialog = !settings.printer_device_name;
+      
       const printOptions = {
-        silent: true,
+        silent: !shouldShowDialog,
         printBackground: true,
         deviceName: settings.printer_device_name || ''
       };
@@ -72,15 +75,18 @@ export const printReceipt = async (htmlContent: string) => {
 
       win.webContents.print(printOptions, (success, errorType) => {
         console.log('Print callback:', { success, errorType });
+        
         if (!success) {
-          console.error('Silent print failed:', errorType);
-          // If silent print fails (common on macOS if no printer selected), try with dialog
-          if (process.platform === 'darwin') {
-             console.log('Attempting print with dialog...');
+          console.error('Print failed:', errorType);
+          
+          // If silent print failed, try again with the dialog (on ALL platforms)
+          if (!shouldShowDialog) {
+             console.log('Silent print failed, attempting with dialog...');
              win.webContents.print({ ...printOptions, silent: false }, (successWithDialog, errorWithDialog) => {
                if (successWithDialog) {
                  resolve(true);
                } else {
+                 console.error('Dialog print failed:', errorWithDialog);
                  reject(errorWithDialog);
                }
                win.close();
