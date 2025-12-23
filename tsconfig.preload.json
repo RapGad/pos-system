@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "CommonJS",
+        "moduleResolution": "Node",
+        "outDir": "dist-electron",
+        "rootDir": "src",
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+        "strict": true,
+        "skipLibCheck": true,
+        "isolatedModules": false
+    },
+    "include": [
+        "src/preload/**/*"
+    ]
+}
