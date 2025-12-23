@@ -50,14 +50,16 @@ export const printReceipt = async (htmlContent: string) => {
   
   try {
     // Write HTML content to the temp file
+    console.log('Writing receipt to temp file:', tempFilePath);
     await fs.promises.writeFile(tempFilePath, htmlContent, 'utf-8');
     
-    // Load the file using loadFile - this avoids "Not allowed to load local resource" errors
-    // and handles encoding correctly
+    // Load the file using loadFile
+    console.log('Loading temp file into window...');
     await win.loadFile(tempFilePath);
     
-    // Wait for content to load and render
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Wait for content to load and render - increased to 1.5s to ensure rendering
+    console.log('Waiting for render...');
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
     return new Promise((resolve, reject) => {
       const printOptions = {
@@ -66,7 +68,10 @@ export const printReceipt = async (htmlContent: string) => {
         deviceName: settings.printer_device_name || ''
       };
 
+      console.log('Starting print job with options:', JSON.stringify(printOptions));
+
       win.webContents.print(printOptions, (success, errorType) => {
+        console.log('Print callback:', { success, errorType });
         if (!success) {
           console.error('Silent print failed:', errorType);
           // If silent print fails (common on macOS if no printer selected), try with dialog
@@ -209,6 +214,8 @@ export const generateReceiptHTML = async (sale: any) => {
             <img src="${barcodeImg}" alt="Barcode" />
           </div>
           ` : ''}
+          <!-- Add extra space for paper cut -->
+          <div style="height: 20px;"></div>
         </div>
       </body>
     </html>
