@@ -1,18 +1,33 @@
-import { BrowserWindow } from 'electron';
 import { getSettings } from './settings.js';
 import bwipjs from 'bwip-js';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+// @ts-ignore
+import escpos from 'escpos';
+// @ts-ignore
+import USB from 'escpos-usb';
 
-// This implementation uses the system's printer driver via Electron's BrowserWindow.print().
-// It supports standard thermal printers (80mm/58mm).
+// Set the adapter
+escpos.USB = USB;
 
 export const getPrinters = async () => {
-  const win = new BrowserWindow({ show: false });
-  const printers = await win.webContents.getPrintersAsync();
-  win.close();
-  return printers;
+  try {
+    // escpos-usb doesn't have a simple "list all" method that returns details easily in all versions,
+    // but we can try to find connected USB printers.
+    const devices = USB.findPrinter();
+    return devices.map((d: any) => ({
+      name: `USB Printer (VID:${d.deviceDescriptor.idVendor.toString(16).toUpperCase()} PID:${d.deviceDescriptor.idProduct.toString(16).toUpperCase()})`,
+      displayName: 'USB Thermal Printer',
+      description: 'Direct USB Connection',
+      status: 0,
+      isDefault: false,
+      deviceDescriptor: {
+        idVendor: d.deviceDescriptor.idVendor,
+        idProduct: d.deviceDescriptor.idProduct
+      }
+    }));
+  } catch (error) {
+    console.error('Failed to list USB printers:', error);
+    return [];
+  }
 };
 
 const generateBarcodeBase64 = async (text: string): Promise<string> => {
@@ -34,87 +49,100 @@ const generateBarcodeBase64 = async (text: string): Promise<string> => {
   });
 };
 
-export const printReceipt = async (htmlContent: string) => {
+export const printReceipt = async (sale: any) => {
   const settings = getSettings();
-  const win = new BrowserWindow({
-    show: false,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-    }
-  });
-
-  // Create a temporary file for the receipt
-  const tempDir = os.tmpdir();
-  const tempFilePath = path.join(tempDir, `receipt-${Date.now()}.html`);
   
-  try {
-    // Write HTML content to the temp file
-    console.log('Writing receipt to temp file:', tempFilePath);
-    await fs.promises.writeFile(tempFilePath, htmlContent, 'utf-8');
-    
-    // Load the file using loadFile
-    console.log('Loading temp file into window...');
-    await win.loadFile(tempFilePath);
-    
-    // Wait for content to load and render - increased to 1.5s to ensure rendering
-    console.log('Waiting for render...');
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    return new Promise((resolve, reject) => {
-      // If no printer is selected, default to showing the dialog
-      const shouldShowDialog = !settings.printer_device_name;
+  return new Promise((resolve, reject) => {
+    try {
+      // Parse VID/PID from settings if available, or try to find the first printer
+      let device;
+      if (settings.printer_device_name && settings.printer_device_name.includes('VID')) {
+        // Extract VID and PID
+        const vidMatch = settings.printer_device_name.match(/VID:([0-9A-F]+)/);
+        const pidMatch = settings.printer_device_name.match(/PID:([0-9A-F]+)/);
+        if (vidMatch && pidMatch) {
+          const vid = parseInt(vidMatch[1], 16);
+          const pid = parseInt(pidMatch[1], 16);
+          device = new escpos.USB(vid as any, pid as any);
+        }
+      }
       
-      const printOptions = {
-        silent: !shouldShowDialog,
-        printBackground: true,
-        deviceName: settings.printer_device_name || ''
-      };
+      if (!device) {
+        // Fallback to auto-detect
+        device = new escpos.USB();
+      }
 
-      console.log('Starting print job with options:', JSON.stringify(printOptions));
+      const printer = new escpos.Printer(device);
 
-      win.webContents.print(printOptions, (success, errorType) => {
-        console.log('Print callback:', { success, errorType });
-        
-        if (!success) {
-          console.error('Print failed:', errorType);
+      device.open((error: any) => {
+        if (error) {
+          console.error('Failed to open printer:', error);
+          reject(error);
+          return;
+        }
+
+        try {
+          printer
+            .font('A')
+            .align('CT')
+            .style('B')
+            .size(1, 1)
+            .text(settings.store_name)
+            .style('NORMAL')
+            .size(1, 1)
+            .text(settings.store_address)
+            .text(settings.store_phone)
+            .text('--------------------------------')
+            .text(`Receipt: ${sale.receipt_number}`)
+            .text(new Date(sale.created_at || Date.now()).toLocaleString())
+            .text('--------------------------------')
+            .align('LT');
+
+          // Items
+          sale.items.forEach((item: any) => {
+            const total = (item.price_at_sale * item.quantity / 100).toFixed(2);
+            printer.text(`${item.name}`);
+            printer.tableCustom([
+              { text: `${item.quantity} x ${(item.price_at_sale / 100).toFixed(2)}`, align: 'LEFT', width: 0.65 },
+              { text: `${settings.currency_symbol}${total}`, align: 'RIGHT', width: 0.35 }
+            ] as any);
+          });
+
+          printer.align('CT').text('--------------------------------').align('RT');
+
+          // Totals
+          const totalAmount = (sale.total_amount / 100).toFixed(2);
+          printer.text(`TOTAL: ${settings.currency_symbol}${totalAmount}`);
+          printer.text(`Payment: ${sale.payment_method?.toUpperCase() || 'CASH'}`);
+
+          printer.align('CT').text('--------------------------------');
           
-          // If silent print failed, try again with the dialog (on ALL platforms)
-          if (!shouldShowDialog) {
-             console.log('Silent print failed, attempting with dialog...');
-             win.webContents.print({ ...printOptions, silent: false }, (successWithDialog, errorWithDialog) => {
-               if (successWithDialog) {
-                 resolve(true);
-               } else {
-                 console.error('Dialog print failed:', errorWithDialog);
-                 reject(errorWithDialog);
-               }
-               win.close();
-             });
-          } else {
-            reject(errorType);
-            win.close();
+          // Footer
+          if (settings.receipt_footer) {
+            printer.text(settings.receipt_footer);
           }
-        } else {
+          
+          // Barcode
+          printer.barcode(sale.receipt_number, 'CODE128', { width: 2, height: 50 } as any);
+          
+          // Cut
+          printer.cut();
+          
+          // Close
+          printer.close();
           resolve(true);
-          win.close();
+        } catch (printError) {
+          console.error('Error sending commands to printer:', printError);
+          reject(printError);
+          // Ensure we try to close if possible, though close() might throw if not open
+          try { printer.close(); } catch (e) {}
         }
       });
-    });
-  } catch (error) {
-    console.error('Printing error:', error);
-    win.close();
-    throw error;
-  } finally {
-    // Clean up temp file
-    try {
-      if (fs.existsSync(tempFilePath)) {
-        await fs.promises.unlink(tempFilePath);
-      }
-    } catch (cleanupError) {
-      console.error('Failed to clean up temp receipt file:', cleanupError);
+    } catch (err) {
+      console.error('Error initializing printer:', err);
+      reject(err);
     }
-  }
+  });
 };
 
 export const generateReceiptHTML = async (sale: any) => {

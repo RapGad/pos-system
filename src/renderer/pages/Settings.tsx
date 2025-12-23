@@ -55,7 +55,7 @@ const Settings: React.FC = () => {
         // @ts-ignore
         window.electronAPI.invoke('settings:get'),
         // @ts-ignore
-        window.electronAPI.invoke('printer:get-list')
+        window.electronAPI.invoke('printer:get-printers')
       ]);
       
       setSettings(currentSettings);

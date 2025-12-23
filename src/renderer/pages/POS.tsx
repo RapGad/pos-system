@@ -14,6 +14,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useProducts, type Product } from '../hooks/useProducts';
 import { useCart } from '../hooks/useCart';
 import { useSettings } from '../hooks/useSettings';
+import ReceiptPreviewModal from '../components/ReceiptPreviewModal';
 
 const POS: React.FC = () => {
   const { products, categories, fetchProducts, fetchCategories } = useProducts();
@@ -27,6 +28,11 @@ const POS: React.FC = () => {
   const [successOpen, setSuccessOpen] = useState(false);
   const [lastReceiptNumber, setLastReceiptNumber] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [currentSale, setCurrentSale] = useState<any>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [printerError, setPrinterError] = useState(false);
   
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -82,6 +88,14 @@ const POS: React.FC = () => {
     const currentItems = [...cart];
     const receiptNum = `REC-${Date.now()}`; // Generate receipt number
     
+    const saleData = {
+      receipt_number: receiptNum,
+      total_amount: currentTotal,
+      items: currentItems,
+      payment_method: method,
+      created_at: new Date().toISOString()
+    };
+
     const result = await checkout(method);
     
     if (result.success) {
@@ -90,26 +104,47 @@ const POS: React.FC = () => {
       setPrinterError(false); // Reset printer error
       
       try {
-        // Print receipt via Electron API
+        // Generate preview HTML
         // @ts-ignore
-        await window.electronAPI.invoke('printer:print-receipt', {
-          receipt_number: receiptNum,
-          total_amount: currentTotal,
-          items: currentItems,
-          payment_method: method
-        });
+        const html = await window.electronAPI.invoke('printer:generate-preview', saleData);
+        
+        setPreviewHtml(html);
+        setCurrentSale(saleData);
+        setPreviewOpen(true);
       } catch (err) {
-        console.error('Printing failed:', err);
-        setPrinterError(true);
-        // We don't set main error here to avoid confusing the user about the sale success
-      } finally {
-        // Show success dialog even if printing fails, as the sale was recorded
+        console.error('Preview generation failed:', err);
+        // Fallback to success dialog if preview fails
         setSuccessOpen(true);
         clearCart();
       }
     } else {
       setError(result.error || 'Checkout failed');
     }
+  };
+
+  const handlePrintConfirm = async () => {
+    setIsPrinting(true);
+    try {
+      // @ts-ignore
+      await window.electronAPI.invoke('printer:print-receipt', currentSale);
+      setPreviewOpen(false);
+      setSuccessOpen(true);
+      clearCart();
+    } catch (err) {
+      console.error('Printing failed:', err);
+      setPrinterError(true);
+      setPreviewOpen(false);
+      setSuccessOpen(true);
+      clearCart();
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handlePreviewClose = () => {
+    setPreviewOpen(false);
+    setSuccessOpen(true);
+    clearCart();
   };
 
   return (
@@ -384,6 +419,14 @@ const POS: React.FC = () => {
           Printer Error: No printer detected or printing failed. Sales are blocked without a printer.
         </Alert>
       </Snackbar>
+
+      <ReceiptPreviewModal
+        open={previewOpen}
+        htmlContent={previewHtml}
+        onClose={handlePreviewClose}
+        onPrint={handlePrintConfirm}
+        printing={isPrinting}
+      />
 
       </Grid>
     </Box>
