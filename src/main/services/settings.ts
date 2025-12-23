@@ -6,6 +6,7 @@ export interface Settings {
   store_phone: string;
   receipt_footer: string;
   printer_device_name: string;
+  printer_paper_width: '80mm' | '58mm';
   currency_symbol: string;
   tax_percentage: number;
   low_stock_threshold: number;
@@ -17,6 +18,7 @@ const DEFAULT_SETTINGS: Settings = {
   store_phone: '555-0123',
   receipt_footer: 'Thank you for your business!',
   printer_device_name: '',
+  printer_paper_width: '80mm',
   currency_symbol: '₵',
   tax_percentage: 0,
   low_stock_threshold: 10

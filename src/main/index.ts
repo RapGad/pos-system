@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { runMigrations } from './database/migrator.js';
@@ -36,6 +36,9 @@ if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
+// Disable hardware acceleration to prevent GL driver errors on some macOS systems
+app.disableHardwareAcceleration();
+
 // Disable autofill features in DevTools to prevent harmless error messages
 app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication');
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
@@ -64,6 +67,7 @@ const createSplashWindow = () => {
       nodeIntegration: false,
       contextIsolation: true,
     },
+    icon: path.join(__dirname, '../../public/icon.png'),
   });
 
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -84,6 +88,7 @@ const createWindow = () => {
       nodeIntegration: false,
       contextIsolation: true,
     },
+    icon: path.join(__dirname, '../../public/icon.png'),
   });
 
   // Test IPC
@@ -96,7 +101,7 @@ const createWindow = () => {
       mainWindow.webContents.openDevTools();
     }
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
 
   // When the main window is ready to be shown, close the splash screen and show the main window
@@ -113,6 +118,11 @@ const createWindow = () => {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.on('ready', () => {
+  if (process.platform === 'darwin') {
+    const iconPath = path.join(__dirname, '../../public/icon.png');
+    const image = nativeImage.createFromPath(iconPath);
+    app.dock.setIcon(image);
+  }
   createSplashWindow();
   createWindow();
 });

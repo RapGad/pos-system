@@ -13,7 +13,7 @@ export const registerPrinterHandlers = () => {
 
   ipcMain.handle('printer:print-receipt', async (_, sale) => {
     try {
-      const html = generateReceiptHTML(sale);
+      const html = await generateReceiptHTML(sale);
       await printReceipt(html);
       return true;
     } catch (error) {

@@ -12,6 +12,7 @@ interface Settings {
   store_phone: string;
   receipt_footer: string;
   printer_device_name: string;
+  printer_paper_width: '80mm' | '58mm';
   currency_symbol: string;
   tax_percentage: number;
   low_stock_threshold: number;
@@ -32,6 +33,7 @@ const Settings: React.FC = () => {
     store_phone: '',
     receipt_footer: '',
     printer_device_name: '',
+    printer_paper_width: '80mm',
     currency_symbol: '$',
     tax_percentage: 0,
     low_stock_threshold: 10
@@ -182,6 +184,19 @@ const Settings: React.FC = () => {
                   {printer.displayName || printer.name}
                 </MenuItem>
               ))}
+            </TextField>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              select
+              fullWidth
+              label="Paper Width"
+              value={settings.printer_paper_width || '80mm'}
+              onChange={(e) => setSettings({ ...settings, printer_paper_width: e.target.value as '80mm' | '58mm' })}
+              helperText="Select thermal paper width"
+            >
+              <MenuItem value="80mm">80mm (Standard)</MenuItem>
+              <MenuItem value="58mm">58mm (Small)</MenuItem>
             </TextField>
           </Grid>
         </Grid>
