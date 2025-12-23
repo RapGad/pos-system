@@ -24,7 +24,11 @@ registerAuthHandlers();
 registerProductHandlers();
 registerSalesHandlers();
 registerReportHandlers();
-registerPrinterHandlers();
+try {
+  registerPrinterHandlers();
+} catch (err) {
+  console.error('Failed to register printer handlers:', err);
+}
 registerBackupHandlers();
 registerSettingsHandlers();
 

@@ -2,18 +2,152 @@ import { getSettings } from './settings.js';
 import bwipjs from 'bwip-js';
 // @ts-ignore
 import escpos from 'escpos';
-// @ts-ignore
-import USB from 'escpos-usb';
+import { createRequire } from 'module';
 
-// Set the adapter
-escpos.USB = USB;
+const require = createRequire(import.meta.url);
+
+// Dynamically load usb to prevent startup crash if it fails (common on Windows)
+let usb: any;
+try {
+  usb = require('usb');
+} catch (e) {
+  console.error('Failed to load usb module:', e);
+  usb = null;
+}
+
+// Custom USB Adapter to bypass escpos-usb issues with usb v2+
+// @ts-ignore
+class CustomUSBAdapter extends escpos.Adapter {
+  private device: any;
+  private endpoint: any;
+  private deviceToClose: any;
+
+  constructor(vid?: number, pid?: number) {
+    super();
+    this.device = null;
+    this.endpoint = null;
+    
+    if (!usb) {
+      console.warn('USB module not loaded, cannot find printers');
+      return;
+    }
+    
+    if (vid && pid) {
+      this.device = usb.findByIds(vid, pid);
+    } else {
+      // Find first printer-like device if no VID/PID provided
+      const devices = usb.getDeviceList();
+      this.device = devices.find((d: any) => {
+        try {
+          return d.configDescriptor?.interfaces.some((iface: any) => 
+            iface.some((conf: any) => conf.bInterfaceClass === 7) // 7 is Printer class
+          );
+        } catch (e) {
+          return false;
+        }
+      });
+    }
+  }
+
+  open(callback: (err?: any) => void) {
+    if (!usb) {
+      callback(new Error('USB module not loaded'));
+      return this;
+    }
+
+    if (!this.device) {
+      callback(new Error('No printer device found'));
+      return this;
+    }
+
+    try {
+      this.device.open();
+      
+      // Find interface and endpoint
+      const interfaces = this.device.interfaces;
+      let printerInterface = interfaces.find((iface: any) => {
+        return iface.descriptor.bInterfaceClass === 7;
+      });
+
+      if (!printerInterface) {
+        // Fallback: try first interface
+        printerInterface = interfaces[0];
+      }
+
+      if (!printerInterface) {
+        throw new Error('No interface found');
+      }
+
+      if (printerInterface.isKernelDriverActive()) {
+        printerInterface.detachKernelDriver();
+      }
+
+      printerInterface.claim();
+
+      const endpoints = printerInterface.endpoints;
+      this.endpoint = endpoints.find((ep: any) => ep.direction === 'out');
+
+      if (!this.endpoint) {
+        throw new Error('No OUT endpoint found');
+      }
+
+      this.deviceToClose = this.device;
+      callback(null);
+    } catch (err) {
+      callback(err);
+    }
+    return this;
+  }
+
+  write(data: Buffer, callback: (err?: any) => void) {
+    if (!this.endpoint) {
+      callback(new Error('Device not open'));
+      return this;
+    }
+
+    this.endpoint.transfer(data, (err: any) => {
+      callback(err);
+    });
+    return this;
+  }
+
+  close(callback: (err?: any) => void) {
+    if (this.deviceToClose) {
+      try {
+        this.deviceToClose.close();
+        this.deviceToClose = null;
+        this.endpoint = null;
+        callback(null);
+      } catch (err) {
+        callback(err);
+      }
+    } else {
+      callback(null);
+    }
+    return this;
+  }
+}
 
 export const getPrinters = async () => {
+  if (!usb) {
+    console.warn('USB module not loaded, returning empty printer list');
+    return [];
+  }
+
   try {
-    // escpos-usb doesn't have a simple "list all" method that returns details easily in all versions,
-    // but we can try to find connected USB printers.
-    const devices = USB.findPrinter();
-    return devices.map((d: any) => ({
+    // List connected USB printers using usb lib directly
+    const devices = usb.getDeviceList();
+    const printers = devices.filter((d: any) => {
+      try {
+        return d.configDescriptor?.interfaces.some((iface: any) => 
+          iface.some((conf: any) => conf.bInterfaceClass === 7)
+        );
+      } catch (e) {
+        return false;
+      }
+    });
+
+    return printers.map((d: any) => ({
       name: `USB Printer (VID:${d.deviceDescriptor.idVendor.toString(16).toUpperCase()} PID:${d.deviceDescriptor.idProduct.toString(16).toUpperCase()})`,
       displayName: 'USB Thermal Printer',
       description: 'Direct USB Connection',
@@ -66,9 +200,14 @@ export const printReceipt = async (sale: any) => {
   };
 
   return new Promise((resolve, reject) => {
+    if (!usb) {
+      reject(new Error('USB module not loaded'));
+      return;
+    }
+
     try {
       // Parse VID/PID from settings if available, or try to find the first printer
-      let device;
+      let adapter;
       if (settings.printer_device_name && settings.printer_device_name.includes('VID')) {
         // Extract VID and PID
         const vidMatch = settings.printer_device_name.match(/VID:([0-9A-F]+)/);
@@ -76,18 +215,18 @@ export const printReceipt = async (sale: any) => {
         if (vidMatch && pidMatch) {
           const vid = parseInt(vidMatch[1], 16);
           const pid = parseInt(pidMatch[1], 16);
-          device = new escpos.USB(vid as any, pid as any);
+          adapter = new CustomUSBAdapter(vid, pid);
         }
       }
       
-      if (!device) {
+      if (!adapter) {
         // Fallback to auto-detect
-        device = new escpos.USB();
+        adapter = new CustomUSBAdapter();
       }
 
-      const printer = new escpos.Printer(device);
+      const printer = new escpos.Printer(adapter);
 
-      device.open((error: any) => {
+      adapter.open((error: any) => {
         if (error) {
           console.error('Failed to open printer:', error);
           reject(error);
@@ -139,16 +278,8 @@ export const printReceipt = async (sale: any) => {
           }
           
           // Barcode - simplified or disabled if causing issues
-          // The "random numbers" issue is often caused by barcode commands on incompatible printers.
-          // We'll try a standard CODE39 which is widely supported, or skip it if needed.
-          // For now, let's try to print it but catch errors, and ensure we feed paper first.
           printer.feed(1);
           try {
-             // Using CODE39 as it's very common, but it requires uppercase alphanumeric only usually.
-             // If receipt_number has special chars, this might fail.
-             // Let's stick to text for the receipt number for now to be safe, 
-             // as the user specifically mentioned "random numbers" appearing.
-             // printer.barcode(sale.receipt_number, 'CODE39', { width: 1, height: 50 });
              printer.text(`*${sale.receipt_number}*`); // Text representation
           } catch (e) {
              console.warn('Barcode printing skipped', e);
@@ -183,9 +314,10 @@ export const printReceipt = async (sale: any) => {
 
 export const generateReceiptHTML = async (sale: any) => {
   const settings = getSettings();
+  const is58mm = settings.printer_paper_width === '58mm';
   // 58mm is roughly 200-220px printable, 80mm is roughly 280-300px printable in CSS pixels usually
   // But for preview, we want to simulate the physical look.
-  const cssWidth = settings.printer_paper_width === '58mm' ? '220px' : '300px';
+  const cssWidth = is58mm ? '220px' : '300px';
   
   // Generate barcode
   let barcodeImg = '';
