@@ -17,13 +17,14 @@ try {
 
 // Custom USB Adapter to bypass escpos-usb issues with usb v2+
 // @ts-ignore
-class CustomUSBAdapter extends escpos.Adapter {
+// Custom USB Adapter to bypass escpos-usb issues with usb v2+
+// @ts-ignore
+class CustomUSBAdapter {
   private device: any;
   private endpoint: any;
   private deviceToClose: any;
 
   constructor(vid?: number, pid?: number) {
-    super();
     this.device = null;
     this.endpoint = null;
     
