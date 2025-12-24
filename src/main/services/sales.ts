@@ -11,6 +11,7 @@ export interface Sale {
   receipt_number: string;
   total_amount: number;
   payment_method: string;
+  customer_name?: string;
   user_id: number;
   items: SaleItem[];
 }
@@ -31,8 +32,8 @@ export const createSale = (sale: Sale) => {
 
     // 1. Create Sale Record
     const insertSale = db.prepare(`
-      INSERT INTO sales (receipt_number, total_amount, payment_method, user_id)
-      VALUES (@receipt_number, @total_amount, @payment_method, @user_id)
+      INSERT INTO sales (receipt_number, total_amount, payment_method, customer_name, user_id)
+      VALUES (@receipt_number, @total_amount, @payment_method, @customer_name, @user_id)
     `);
     const info = insertSale.run(saleData);
     const saleId = info.lastInsertRowid;
@@ -75,8 +76,8 @@ export const createSale = (sale: Sale) => {
   }
 };
 
-export const getSales = (filters: { dateFrom?: string; dateTo?: string; paymentMethod?: string; userId?: number; receiptNumber?: string; page?: number; pageSize?: number } = {}) => {
-  const { dateFrom, dateTo, paymentMethod, userId, receiptNumber, page = 0, pageSize = 10 } = filters;
+export const getSales = (filters: { dateFrom?: string; dateTo?: string; paymentMethod?: string; userId?: number; receiptNumber?: string; customerName?: string; page?: number; pageSize?: number } = {}) => {
+  const { dateFrom, dateTo, paymentMethod, userId, receiptNumber, customerName, page = 0, pageSize = 10 } = filters;
   let baseQuery = `
     FROM sales s
     LEFT JOIN users u ON s.user_id = u.id
@@ -103,6 +104,11 @@ export const getSales = (filters: { dateFrom?: string; dateTo?: string; paymentM
   if (receiptNumber) {
     baseQuery += ' AND s.receipt_number LIKE ?';
     params.push(`%${receiptNumber}%`);
+  }
+
+  if (customerName) {
+    baseQuery += ' AND s.customer_name LIKE ?';
+    params.push(`%${customerName}%`);
   }
   
   // Get total count

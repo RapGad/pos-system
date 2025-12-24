@@ -11,6 +11,19 @@ export const runMigrations = () => {
     console.log('Running migrations...');
     db.exec(schema);
     
+    // Migration: Add customer_name to sales if it doesn't exist
+    try {
+      const tableInfo = db.prepare("PRAGMA table_info(sales)").all() as any[];
+      const hasCustomerName = tableInfo.some(col => col.name === 'customer_name');
+      
+      if (!hasCustomerName) {
+        console.log('Migrating: Adding customer_name to sales table...');
+        db.prepare("ALTER TABLE sales ADD COLUMN customer_name TEXT").run();
+      }
+    } catch (err) {
+      console.error('Failed to migrate sales table:', err);
+    }
+    
     // Check if we need to seed initial data
     const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
     

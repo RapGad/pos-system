@@ -64,13 +64,14 @@ export const useCart = () => {
 
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  const checkout = async (paymentMethod: 'cash' | 'card'): Promise<{ success: boolean; error?: string }> => {
+  const checkout = async (paymentMethod: 'cash' | 'card', customerName?: string): Promise<{ success: boolean; error?: string }> => {
     if (!user) return { success: false, error: 'User not authenticated' };
     
     const saleData = {
       receipt_number: `REC-${Date.now()}`, // Simple receipt number generation
       total_amount: total,
       payment_method: paymentMethod,
+      customer_name: customerName,
       user_id: user.id,
       items: cart.map((item) => ({
         product_id: item.id,

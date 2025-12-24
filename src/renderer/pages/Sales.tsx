@@ -22,7 +22,8 @@ const Sales: React.FC = () => {
     dateFrom: '',
     dateTo: '',
     paymentMethod: '',
-    receiptNumber: ''
+    receiptNumber: '',
+    customerName: ''
   });
 
   useEffect(() => {
@@ -67,6 +68,15 @@ const Sales: React.FC = () => {
               onChange={(e) => handleFilterChange('receiptNumber', e.target.value)}
             />
           </Grid>
+          <Grid size={{ xs: 12, md: 3 }}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Customer Name"
+              value={filters.customerName || ''}
+              onChange={(e) => handleFilterChange('customerName', e.target.value)}
+            />
+          </Grid>
           <Grid size={{ xs: 12, md: 2 }}>
             <TextField
               fullWidth
@@ -105,7 +115,7 @@ const Sales: React.FC = () => {
           </Grid>
           <Grid size={{ xs: 12, md: 3 }}>
             <Button variant="outlined" onClick={() => {
-              setFilters({ dateFrom: '', dateTo: '', paymentMethod: '', receiptNumber: '' });
+              setFilters({ dateFrom: '', dateTo: '', paymentMethod: '', receiptNumber: '', customerName: '' });
               fetchSales();
             }}>
               Reset Filters
@@ -181,6 +191,12 @@ const Sales: React.FC = () => {
                 <Typography variant="subtitle2" color="text.secondary">Cashier</Typography>
                 <Typography variant="body1">{selectedSale.username}</Typography>
               </Grid>
+              {selectedSale.customer_name && (
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Typography variant="subtitle2" color="text.secondary">Customer</Typography>
+                  <Typography variant="body1">{selectedSale.customer_name}</Typography>
+                </Grid>
+              )}
               <Grid size={{ xs: 12 }}>
                 <TableContainer component={Paper} variant="outlined">
                   <Table size="small">

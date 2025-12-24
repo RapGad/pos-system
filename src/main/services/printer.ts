@@ -127,6 +127,11 @@ export const printReceipt = async (sale: any) => {
             printer.text('-'.repeat(width));
             printer.text(`Receipt: ${sale.receipt_number}`);
             printer.text(new Date(sale.created_at || Date.now()).toLocaleString());
+            
+            if (sale.customer_name) {
+              printer.text(`Customer: ${sale.customer_name}`);
+            }
+            
             printer.text('-'.repeat(width));
             
             // Flush header before items
@@ -330,6 +335,7 @@ export const generateReceiptHTML = async (sale: any) => {
         </div>
         <div class="meta">
           <span>Receipt: ${sale.receipt_number}</span>
+          ${sale.customer_name ? `<span>Customer: ${sale.customer_name}</span>` : ''}
         </div>
 
         <div class="divider"></div>
@@ -384,4 +390,37 @@ export const generateReceiptHTML = async (sale: any) => {
       </body>
     </html>
   `;
+};
+
+export const printViaWebContents = async (html: string): Promise<boolean> => {
+  return new Promise((resolve, reject) => {
+    try {
+      const { BrowserWindow } = require('electron');
+      
+      const workerWindow = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          nodeIntegration: true,
+          contextIsolation: false
+        }
+      });
+
+      workerWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+
+      workerWindow.webContents.on('did-finish-load', () => {
+        workerWindow.webContents.print({ silent: true, printBackground: true }, (success: boolean, errorType: string) => {
+          if (!success) {
+            console.error('Failed to print via WebContents:', errorType);
+            reject(new Error(errorType));
+          } else {
+            resolve(true);
+          }
+          workerWindow.close();
+        });
+      });
+    } catch (error) {
+      console.error('Error in printViaWebContents:', error);
+      reject(error);
+    }
+  });
 };

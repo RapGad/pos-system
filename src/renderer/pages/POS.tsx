@@ -34,6 +34,9 @@ const POS: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   
+  // Customer Name state
+  const [customerName, setCustomerName] = useState('');
+  
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [currentSale, setCurrentSale] = useState<any>(null);
@@ -109,15 +112,17 @@ const POS: React.FC = () => {
       total_amount: currentTotal,
       items: currentItems,
       payment_method: method,
+      customer_name: customerName,
       created_at: new Date().toISOString()
     };
 
-    const result = await checkout(method);
+    const result = await checkout(method, customerName);
     
     if (result.success) {
       setPaymentOpen(false);
       setLastReceiptNumber(receiptNum); // Store for display
       setPrinterError(false); // Reset printer error
+      setCustomerName(''); // Reset customer name
       
       try {
         // Generate preview HTML
@@ -373,6 +378,16 @@ const POS: React.FC = () => {
           <Typography variant="h3" align="center" color="primary" fontWeight="bold" gutterBottom>
             {currency}{(total / 100).toFixed(2)}
           </Typography>
+          
+          <TextField
+            fullWidth
+            label="Customer Name (Optional)"
+            variant="outlined"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            sx={{ mb: 2, mt: 1 }}
+          />
+          
           <Typography variant="body2" align="center" color="text.secondary" paragraph>
             Select payment method to complete sale
           </Typography>

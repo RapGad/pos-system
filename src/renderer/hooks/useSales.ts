@@ -7,6 +7,7 @@ export interface Sale {
   payment_method: string;
   user_id: number;
   username: string;
+  customer_name?: string;
   created_at: string;
 }
 

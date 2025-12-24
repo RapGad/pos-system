@@ -42,6 +42,7 @@ export const schema = `
     total_amount INTEGER NOT NULL, -- Stored in cents
     payment_method TEXT NOT NULL,
     status TEXT DEFAULT 'completed', -- completed, voided
+    customer_name TEXT,
     user_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
