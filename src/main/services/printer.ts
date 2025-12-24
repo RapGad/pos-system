@@ -310,11 +310,17 @@ export const generateReceiptHTML = async (sale: any) => {
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Courier+Prime&display=swap');
           
+          @page {
+            margin: 0;
+            size: auto;
+          }
+
           body { 
             font-family: 'Courier Prime', 'Courier New', monospace; 
-            width: ${cssWidth}; 
-            margin: 0 auto; 
-            padding: 10px; 
+            width: 100%;
+            max-width: ${cssWidth};
+            margin: 0; 
+            padding: 5px; 
             background-color: #fff;
             color: #000;
             font-size: 12px;
@@ -376,10 +382,16 @@ export const generateReceiptHTML = async (sale: any) => {
           .barcode { text-align: center; margin-top: 15px; }
           .barcode img { max-width: 100%; height: auto; }
           
-          /* Simulate paper cut */
+          /* Feed for manual tear-off */
+          .feed {
+            height: 30mm; /* Extra space at bottom */
+            width: 100%;
+          }
+          
+          /* Simulate paper cut line visually */
           .cut-line {
             border-top: 1px dotted #ccc;
-            margin-top: 20px;
+            margin-top: 10px;
             padding-top: 5px;
             text-align: center;
             color: #999;
@@ -454,6 +466,9 @@ export const generateReceiptHTML = async (sale: any) => {
           </div>
           ` : ''}
         </div>
+        
+        <div class="cut-line">--- Tear Here ---</div>
+        <div class="feed"></div>
       </body>
     </html>
   `;
