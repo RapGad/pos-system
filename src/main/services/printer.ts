@@ -86,6 +86,15 @@ export const getSystemPrinters = async () => {
 };
 
 export const printViaWebContents = async (html: string, printerName?: string): Promise<boolean> => {
+  const settings = getSettings();
+  const is58mm = settings.printer_paper_width === '58mm';
+  
+  // microns: 1mm = 1000 microns
+  const widthMicrons = is58mm ? 58000 : 80000;
+  // Height is tricky for thermal printers; we set a large enough height
+  // Most drivers will stop feeding when the content ends if configured correctly
+  const heightMicrons = 300000; // 30cm
+
   return new Promise((resolve, reject) => {
     try {
       const { BrowserWindow } = require('electron');
@@ -105,11 +114,16 @@ export const printViaWebContents = async (html: string, printerName?: string): P
           silent: true, 
           printBackground: true,
           deviceName: printerName,
-          margins: { marginType: 'none' } // Crucial for thermal printers
+          margins: { marginType: 'none' },
+          pageSize: {
+            width: widthMicrons,
+            height: heightMicrons
+          }
         }, (success: boolean, errorType: string) => {
           if (!success) {
             console.error('Failed to print via WebContents:', errorType);
-            reject(new Error(errorType));
+            // If it's a "invalid printer" error, it might be the name
+            reject(new Error(`Print failed: ${errorType}`));
           } else {
             resolve(true);
           }
@@ -313,153 +327,111 @@ export const generateReceiptHTML = async (sale: any) => {
         <style>
           @page {
             margin: 0;
-            size: auto;
           }
 
           body { 
             font-family: 'Consolas', 'monaco', 'Courier New', monospace; 
             width: ${printableWidth};
             margin: 0; 
-            padding: 2mm; 
+            padding: 0; 
             background-color: #fff;
             color: #000;
-            font-size: 10pt;
-            line-height: 1.2;
-            overflow: hidden;
+            font-size: 9pt;
+            line-height: 1.1;
           }
           
-          /* Reset box sizing */
-          * { box-sizing: border-box; }
+          table { width: 100%; border-collapse: collapse; }
+          td { padding: 0.5mm 0; vertical-align: top; }
 
-          .header { text-align: center; margin-bottom: 4mm; }
-          .header h1 { margin: 0 0 1mm 0; font-size: 12pt; font-weight: bold; text-transform: uppercase; }
-          .header p { margin: 0.5mm 0; font-size: 9pt; }
+          .center { text-align: center; }
+          .right { text-align: right; }
+          .bold { font-weight: bold; }
+          
+          .header { margin-bottom: 4mm; }
+          .header h1 { margin: 0; font-size: 12pt; }
           
           .divider { 
             border-top: 1px dashed #000; 
             margin: 2mm 0; 
-            width: 100%;
           }
           
-          .meta {
-            display: flex;
-            justify-content: space-between;
-            font-size: 9pt;
-            margin-bottom: 2mm;
-          }
-
-          .items { margin-bottom: 2mm; }
-          .item { 
-            display: flex; 
-            flex-direction: column;
-            margin-bottom: 1.5mm; 
-            border-bottom: 1px dotted #ccc;
-            padding-bottom: 0.5mm;
-          }
-          
-          .item-name { font-weight: bold; margin-bottom: 0.5mm; font-size: 10pt; }
-          .item-details { display: flex; justify-content: space-between; font-size: 9pt; }
-          
-          .totals { margin-top: 2mm; }
-          .row { display: flex; justify-content: space-between; margin-bottom: 1mm; }
           .total-row { 
-            font-weight: bold; 
-            font-size: 11pt; 
-            margin-top: 2mm; 
             border-top: 1px solid #000; 
             border-bottom: 1px solid #000;
-            padding: 1.5mm 0;
+            padding: 2mm 0;
+            font-size: 11pt;
           }
           
-          .footer { text-align: center; margin-top: 4mm; font-size: 9pt; }
-          .barcode { text-align: center; margin-top: 3mm; }
-          .barcode img { max-width: 100%; height: auto; }
-          
-          /* Feed for manual tear-off */
-          .feed {
-            height: 50mm; 
-            width: 100%;
-          }
-          
-          .cut-line {
-            border-top: 1px dotted #000;
-            margin-top: 2mm;
-            padding-top: 1mm;
-            text-align: center;
-            font-size: 8pt;
-            color: #000;
-          }
+          .feed { height: 50mm; }
         </style>
       </head>
       <body>
-        <div class="header">
-          <h1>${settings.store_name}</h1>
-          <p>${settings.store_address}</p>
-          <p>${settings.store_phone}</p>
+        <div class="header center">
+          <h1 class="bold">${settings.store_name}</h1>
+          <div>${settings.store_address}</div>
+          <div>${settings.store_phone}</div>
         </div>
         
         <div class="divider"></div>
         
-        <div class="meta">
-          <span>${new Date(sale.created_at || Date.now()).toLocaleDateString()}</span>
-          <span>${new Date(sale.created_at || Date.now()).toLocaleTimeString()}</span>
-        </div>
-        <div class="meta">
-          <span>Receipt: ${sale.receipt_number}</span>
-        </div>
-        ${sale.customer_name ? `<div class="meta"><span>Customer: ${sale.customer_name}</span></div>` : ''}
+        <table>
+          <tr>
+            <td>${new Date(sale.created_at || Date.now()).toLocaleDateString()}</td>
+            <td class="right">${new Date(sale.created_at || Date.now()).toLocaleTimeString()}</td>
+          </tr>
+          <tr>
+            <td colspan="2">Receipt: ${sale.receipt_number}</td>
+          </tr>
+          ${sale.customer_name ? `<tr><td colspan="2">Customer: ${sale.customer_name}</td></tr>` : ''}
+        </table>
 
         <div class="divider"></div>
         
-        <div class="items">
+        <table>
           ${sale.items.map((item: any) => {
             const price = Number(item.price_at_sale || item.price || 0);
             const qty = Number(item.quantity || 0);
             const total = (price * qty / 100).toFixed(2);
             return `
-            <div class="item">
-              <span class="item-name">${item.name}</span>
-              <div class="item-details">
-                <span>${qty} x ${settings.currency_symbol}${(price / 100).toFixed(2)}</span>
-                <span>${settings.currency_symbol}${total}</span>
-              </div>
-            </div>
+            <tr>
+              <td colspan="2" class="bold">${item.name}</td>
+            </tr>
+            <tr>
+              <td>${qty} x ${settings.currency_symbol}${(price / 100).toFixed(2)}</td>
+              <td class="right">${settings.currency_symbol}${total}</td>
+            </tr>
           `}).join('')}
-        </div>
+        </table>
         
         <div class="divider"></div>
         
-        <div class="totals">
-          <div class="row">
-            <span>Subtotal</span>
-            <span>${settings.currency_symbol}${(Number(sale.total_amount || 0) / 100).toFixed(2)}</span>
-          </div>
+        <table>
+          <tr>
+            <td>Subtotal</td>
+            <td class="right">${settings.currency_symbol}${(Number(sale.total_amount || 0) / 100).toFixed(2)}</td>
+          </tr>
           ${settings.tax_percentage > 0 ? `
-          <div class="row">
-            <span>Tax (${settings.tax_percentage}%)</span>
-            <span>${settings.currency_symbol}${((Number(sale.total_amount || 0) * settings.tax_percentage / 100) / 100).toFixed(2)}</span>
-          </div>
+          <tr>
+            <td>Tax (${settings.tax_percentage}%)</td>
+            <td class="right">${settings.currency_symbol}${((Number(sale.total_amount || 0) * settings.tax_percentage / 100) / 100).toFixed(2)}</td>
+          </tr>
           ` : ''}
-          <div class="row total-row">
-            <span>TOTAL</span>
-            <span>${settings.currency_symbol}${(Number(sale.total_amount || 0) / 100).toFixed(2)}</span>
-          </div>
-          <div class="row" style="margin-top: 1mm;">
-            <span>Payment Method</span>
-            <span>${sale.payment_method?.toUpperCase() || 'CASH'}</span>
-          </div>
+          <tr class="total-row bold">
+            <td>TOTAL</td>
+            <td class="right">${settings.currency_symbol}${(Number(sale.total_amount || 0) / 100).toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td>Payment</td>
+            <td class="right">${sale.payment_method?.toUpperCase() || 'CASH'}</td>
+          </tr>
+        </table>
+        
+        <div class="center" style="margin-top: 4mm;">
+          <div>${settings.receipt_footer}</div>
+          ${barcodeImg ? `<div style="margin-top: 3mm;"><img src="${barcodeImg}" style="max-width: 100%;" /></div>` : ''}
         </div>
         
-        <div class="footer">
-          <p>${settings.receipt_footer}</p>
-          ${barcodeImg ? `
-          <div class="barcode">
-            <img src="${barcodeImg}" alt="Barcode" />
-          </div>
-          ` : ''}
-        </div>
-        
-        <div class="cut-line">--- Tear Here ---</div>
+        <div class="center" style="margin-top: 5mm; font-size: 8pt;">--- Tear Here ---</div>
         <div class="feed"></div>
       </body>
     </html>

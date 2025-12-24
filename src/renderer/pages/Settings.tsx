@@ -3,7 +3,6 @@ import {
   Box, Typography, TextField, Button, Paper, Grid, 
   MenuItem, Alert, Snackbar 
 } from '@mui/material';
-import SaveIcon from '@mui/icons-material/Save';
 import { useAuth } from '../hooks/useAuth';
 
 interface Settings {
@@ -43,7 +42,6 @@ const Settings: React.FC = () => {
   });
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const { user } = useAuth();
 
@@ -72,16 +70,44 @@ const Settings: React.FC = () => {
   };
 
   const handleSave = async () => {
-    setSaving(true);
     try {
+      setLoading(true);
       // @ts-ignore
-      await window.electronAPI.invoke('settings:save', { settings, userRole: user?.role });
+      await window.electronAPI.invoke('settings:save', settings);
       setMessage({ type: 'success', text: 'Settings saved successfully' });
     } catch (error: any) {
       console.error('Failed to save settings:', error);
       setMessage({ type: 'error', text: error.message || 'Failed to save settings' });
     } finally {
-      setSaving(false);
+      setLoading(false);
+    }
+  };
+
+  const handleTestPrint = async () => {
+    try {
+      setLoading(true);
+      const testSale = {
+        receipt_number: 'TEST-0001',
+        total_amount: 1000,
+        payment_method: 'cash',
+        customer_name: 'Test Customer',
+        items: [
+          { name: 'Test Product 1', quantity: 1, price_at_sale: 1000 }
+        ],
+        created_at: new Date().toISOString()
+      };
+      // @ts-ignore
+      const success = await window.electronAPI.invoke('printer:print-receipt', testSale);
+      if (success) {
+        setMessage({ type: 'success', text: 'Test print sent successfully' });
+      } else {
+        setMessage({ type: 'error', text: 'Test print failed' });
+      }
+    } catch (error) {
+      console.error('Test print error:', error);
+      setMessage({ type: 'error', text: 'Test print failed' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -249,18 +275,24 @@ const Settings: React.FC = () => {
         </Button>
       </Paper>
 
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 4 }}>
-        <Button 
-          variant="contained" 
-          size="large" 
-          startIcon={<SaveIcon />}
-          onClick={handleSave}
-          disabled={saving}
-          sx={{ px: 4, py: 1.5, borderRadius: 2 }}
-        >
-          {saving ? 'Saving...' : 'Save Settings'}
-        </Button>
-      </Box>
+        <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={handleTestPrint}
+            disabled={loading || !settings.printer_device_name}
+          >
+            Test Print
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleSave}
+            disabled={loading}
+          >
+            Save Settings
+          </Button>
+        </Box>
 
       <Snackbar 
         open={!!message} 
