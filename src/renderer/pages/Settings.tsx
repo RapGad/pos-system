@@ -73,7 +73,7 @@ const Settings: React.FC = () => {
     try {
       setLoading(true);
       // @ts-ignore
-      await window.electronAPI.invoke('settings:save', settings);
+      await window.electronAPI.invoke('settings:save', { settings, userRole: user?.role });
       setMessage({ type: 'success', text: 'Settings saved successfully' });
     } catch (error: any) {
       console.error('Failed to save settings:', error);
