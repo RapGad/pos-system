@@ -104,7 +104,8 @@ export const printViaWebContents = async (html: string, printerName?: string): P
         workerWindow.webContents.print({ 
           silent: true, 
           printBackground: true,
-          deviceName: printerName 
+          deviceName: printerName,
+          margins: { marginType: 'none' } // Crucial for thermal printers
         }, (success: boolean, errorType: string) => {
           if (!success) {
             console.error('Failed to print via WebContents:', errorType);
@@ -290,9 +291,11 @@ export const printReceipt = async (sale: any) => {
 export const generateReceiptHTML = async (sale: any) => {
   const settings = getSettings();
   const is58mm = settings.printer_paper_width === '58mm';
-  // 58mm is roughly 200-220px printable, 80mm is roughly 280-300px printable in CSS pixels usually
-  // But for preview, we want to simulate the physical look.
-  const cssWidth = is58mm ? '220px' : '300px';
+  
+  // Thermal printers usually have a printable area slightly smaller than the paper width
+  // 58mm -> ~48mm printable
+  // 80mm -> ~72mm printable
+  const printableWidth = is58mm ? '48mm' : '72mm';
   
   // Generate barcode
   let barcodeImg = '';
@@ -308,94 +311,83 @@ export const generateReceiptHTML = async (sale: any) => {
       <head>
         <meta charset="UTF-8">
         <style>
-          @import url('https://fonts.googleapis.com/css2?family=Courier+Prime&display=swap');
-          
           @page {
             margin: 0;
             size: auto;
           }
 
           body { 
-            font-family: 'Courier Prime', 'Courier New', monospace; 
-            width: 100%;
-            max-width: ${cssWidth};
+            font-family: 'Consolas', 'monaco', 'Courier New', monospace; 
+            width: ${printableWidth};
             margin: 0; 
-            padding: 5px; 
+            padding: 2mm; 
             background-color: #fff;
             color: #000;
-            font-size: 12px;
+            font-size: 10pt;
             line-height: 1.2;
+            overflow: hidden;
           }
           
           /* Reset box sizing */
           * { box-sizing: border-box; }
 
-          .header { text-align: center; margin-bottom: 15px; }
-          .header h1 { margin: 0 0 5px 0; font-size: 16px; font-weight: bold; text-transform: uppercase; }
-          .header p { margin: 2px 0; font-size: 12px; }
+          .header { text-align: center; margin-bottom: 4mm; }
+          .header h1 { margin: 0 0 1mm 0; font-size: 12pt; font-weight: bold; text-transform: uppercase; }
+          .header p { margin: 0.5mm 0; font-size: 9pt; }
           
           .divider { 
             border-top: 1px dashed #000; 
-            margin: 10px 0; 
+            margin: 2mm 0; 
             width: 100%;
           }
           
           .meta {
             display: flex;
             justify-content: space-between;
-            font-size: 11px;
-            margin-bottom: 10px;
+            font-size: 9pt;
+            margin-bottom: 2mm;
           }
 
-          .items-header {
-            display: flex;
-            font-weight: bold;
-            border-bottom: 1px solid #000;
-            padding-bottom: 5px;
-            margin-bottom: 5px;
-          }
-          
-          .items { margin-bottom: 10px; }
+          .items { margin-bottom: 2mm; }
           .item { 
             display: flex; 
             flex-direction: column;
-            margin-bottom: 5px; 
+            margin-bottom: 1.5mm; 
             border-bottom: 1px dotted #ccc;
-            padding-bottom: 2px;
+            padding-bottom: 0.5mm;
           }
           
-          .item-name { font-weight: bold; margin-bottom: 2px; }
-          .item-details { display: flex; justify-content: space-between; font-size: 11px; }
+          .item-name { font-weight: bold; margin-bottom: 0.5mm; font-size: 10pt; }
+          .item-details { display: flex; justify-content: space-between; font-size: 9pt; }
           
-          .totals { margin-top: 10px; }
-          .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+          .totals { margin-top: 2mm; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 1mm; }
           .total-row { 
             font-weight: bold; 
-            font-size: 14px; 
-            margin-top: 10px; 
+            font-size: 11pt; 
+            margin-top: 2mm; 
             border-top: 1px solid #000; 
             border-bottom: 1px solid #000;
-            padding: 5px 0;
+            padding: 1.5mm 0;
           }
           
-          .footer { text-align: center; margin-top: 20px; font-size: 11px; }
-          .barcode { text-align: center; margin-top: 15px; }
+          .footer { text-align: center; margin-top: 4mm; font-size: 9pt; }
+          .barcode { text-align: center; margin-top: 3mm; }
           .barcode img { max-width: 100%; height: auto; }
           
           /* Feed for manual tear-off */
           .feed {
-            height: 30mm; /* Extra space at bottom */
+            height: 50mm; 
             width: 100%;
           }
           
-          /* Simulate paper cut line visually */
           .cut-line {
-            border-top: 1px dotted #ccc;
-            margin-top: 10px;
-            padding-top: 5px;
+            border-top: 1px dotted #000;
+            margin-top: 2mm;
+            padding-top: 1mm;
             text-align: center;
-            color: #999;
-            font-size: 10px;
+            font-size: 8pt;
+            color: #000;
           }
         </style>
       </head>
@@ -414,8 +406,8 @@ export const generateReceiptHTML = async (sale: any) => {
         </div>
         <div class="meta">
           <span>Receipt: ${sale.receipt_number}</span>
-          ${sale.customer_name ? `<span>Customer: ${sale.customer_name}</span>` : ''}
         </div>
+        ${sale.customer_name ? `<div class="meta"><span>Customer: ${sale.customer_name}</span></div>` : ''}
 
         <div class="divider"></div>
         
@@ -452,7 +444,7 @@ export const generateReceiptHTML = async (sale: any) => {
             <span>TOTAL</span>
             <span>${settings.currency_symbol}${(Number(sale.total_amount || 0) / 100).toFixed(2)}</span>
           </div>
-          <div class="row" style="margin-top: 5px;">
+          <div class="row" style="margin-top: 1mm;">
             <span>Payment Method</span>
             <span>${sale.payment_method?.toUpperCase() || 'CASH'}</span>
           </div>
