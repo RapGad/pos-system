@@ -6,161 +6,28 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 
-// Dynamically load usb to prevent startup crash if it fails (common on Windows)
-let usb: any;
+// Polyfill usb.on to prevent escpos-usb crash
 try {
-  usb = require('usb');
+  const usb = require('usb');
+  if (usb && !usb.on) {
+    usb.on = () => {}; // No-op polyfill
+  }
 } catch (e) {
-  console.error('Failed to load usb module:', e);
-  usb = null;
+  console.error('Failed to patch usb module:', e);
 }
 
-// Custom USB Adapter to bypass escpos-usb issues with usb v2+
 // @ts-ignore
-// Custom USB Adapter to bypass escpos-usb issues with usb v2+
-// @ts-ignore
-class CustomUSBAdapter {
-  private device: any;
-  private endpoint: any;
-  private deviceToClose: any;
+import USB from 'escpos-usb';
 
-  constructor(vid?: number, pid?: number) {
-    this.device = null;
-    this.endpoint = null;
-    
-    if (!usb) {
-      console.warn('USB module not loaded, cannot find printers');
-      return;
-    }
-    
-    if (vid && pid) {
-      this.device = usb.findByIds(vid, pid);
-    } else {
-      // Find first printer-like device if no VID/PID provided
-      const devices = usb.getDeviceList();
-      this.device = devices.find((d: any) => {
-        try {
-          return d.configDescriptor?.interfaces.some((iface: any) => 
-            iface.some((conf: any) => conf.bInterfaceClass === 7) // 7 is Printer class
-          );
-        } catch (e) {
-          return false;
-        }
-      });
-    }
-  }
-
-  open(callback: (err?: any) => void) {
-    if (!usb) {
-      callback(new Error('USB module not loaded'));
-      return this;
-    }
-
-    if (!this.device) {
-      callback(new Error('No printer device found'));
-      return this;
-    }
-
-    try {
-      this.device.open();
-      
-      // Find interface and endpoint
-      const interfaces = this.device.interfaces;
-      let printerInterface = interfaces.find((iface: any) => {
-        return iface.descriptor.bInterfaceClass === 7;
-      });
-
-      if (!printerInterface) {
-        // Fallback: try first interface
-        printerInterface = interfaces[0];
-      }
-
-      if (!printerInterface) {
-        throw new Error('No interface found');
-      }
-
-      if (!printerInterface) {
-        throw new Error('No interface found');
-      }
-
-      try {
-        if (printerInterface.isKernelDriverActive()) {
-          try {
-            printerInterface.detachKernelDriver();
-          } catch (e) {
-            console.warn('Could not detach kernel driver:', e);
-          }
-        }
-      } catch (e) {
-        console.warn('Could not check kernel driver status:', e);
-      }
-
-      printerInterface.claim();
-
-      const endpoints = printerInterface.endpoints;
-      this.endpoint = endpoints.find((ep: any) => ep.direction === 'out');
-
-      if (!this.endpoint) {
-        throw new Error('No OUT endpoint found');
-      }
-
-      this.deviceToClose = this.device;
-      callback(null);
-    } catch (err) {
-      callback(err);
-    }
-    return this;
-  }
-
-  write(data: Buffer, callback: (err?: any) => void) {
-    if (!this.endpoint) {
-      callback(new Error('Device not open'));
-      return this;
-    }
-
-    this.endpoint.transfer(data, (err: any) => {
-      callback(err);
-    });
-    return this;
-  }
-
-  close(callback: (err?: any) => void) {
-    if (this.deviceToClose) {
-      try {
-        this.deviceToClose.close();
-        this.deviceToClose = null;
-        this.endpoint = null;
-        callback(null);
-      } catch (err) {
-        callback(err);
-      }
-    } else {
-      callback(null);
-    }
-    return this;
-  }
-}
+// Set the adapter
+escpos.USB = USB;
 
 export const getPrinters = async () => {
-  if (!usb) {
-    console.warn('USB module not loaded, returning empty printer list');
-    return [];
-  }
-
   try {
-    // List connected USB printers using usb lib directly
-    const devices = usb.getDeviceList();
-    const printers = devices.filter((d: any) => {
-      try {
-        return d.configDescriptor?.interfaces.some((iface: any) => 
-          iface.some((conf: any) => conf.bInterfaceClass === 7)
-        );
-      } catch (e) {
-        return false;
-      }
-    });
-
-    return printers.map((d: any) => ({
+    // escpos-usb doesn't have a simple "list all" method that returns details easily in all versions,
+    // but we can try to find connected USB printers.
+    const devices = USB.findPrinter();
+    return devices.map((d: any) => ({
       name: `USB Printer (VID:${d.deviceDescriptor.idVendor.toString(16).toUpperCase()} PID:${d.deviceDescriptor.idProduct.toString(16).toUpperCase()})`,
       displayName: 'USB Thermal Printer',
       description: 'Direct USB Connection',
@@ -198,8 +65,14 @@ const generateBarcodeBase64 = async (text: string): Promise<string> => {
 
 export const printReceipt = async (sale: any) => {
   const settings = getSettings();
+  // Sanitize currency symbol for physical print (Cedi sign often fails)
+  const currencySymbol = settings.currency_symbol === '₵' ? 'GHS ' : settings.currency_symbol;
+  
   const is58mm = settings.printer_paper_width === '58mm';
-  const width = is58mm ? 32 : 48; // Approximate character width for standard fonts
+  // Reduce width to be safe and prevent wrapping
+  // 58mm: usually 32 chars, reducing to 28
+  // 80mm: usually 48 chars, reducing to 42
+  const width = is58mm ? 28 : 42; 
   
   // Helper for two-column layout (Name ...... Price)
   const twoColumns = (left: string, right: string): string => {
@@ -213,14 +86,9 @@ export const printReceipt = async (sale: any) => {
   };
 
   return new Promise((resolve, reject) => {
-    if (!usb) {
-      reject(new Error('USB module not loaded'));
-      return;
-    }
-
     try {
       // Parse VID/PID from settings if available, or try to find the first printer
-      let adapter;
+      let device;
       if (settings.printer_device_name && settings.printer_device_name.includes('VID')) {
         // Extract VID and PID
         const vidMatch = settings.printer_device_name.match(/VID:([0-9A-F]+)/);
@@ -228,95 +96,117 @@ export const printReceipt = async (sale: any) => {
         if (vidMatch && pidMatch) {
           const vid = parseInt(vidMatch[1], 16);
           const pid = parseInt(pidMatch[1], 16);
-          adapter = new CustomUSBAdapter(vid, pid);
+          device = new escpos.USB(vid as any, pid as any);
         }
       }
       
-      if (!adapter) {
+      if (!device) {
         // Fallback to auto-detect
-        adapter = new CustomUSBAdapter();
+        device = new escpos.USB();
       }
 
-      const printer = new escpos.Printer(adapter);
+      const printer = new escpos.Printer(device);
 
-      adapter.open((error: any) => {
+      device.open((error: any) => {
         if (error) {
           console.error('Failed to open printer:', error);
           reject(error);
           return;
         }
 
-        try {
-          // Initialize printer
-          printer
-            .font('A')
-            .align('CT')
-            .style('B')
-            .size(1, 1)
-            .text(settings.store_name)
-            .style('NORMAL')
-            .size(1, 1) // Reset size to normal (1,1 is standard)
-            .text(settings.store_address)
-            .text(settings.store_phone)
-            .text('-'.repeat(width))
-            .text(`Receipt: ${sale.receipt_number}`)
-            .text(new Date(sale.created_at || Date.now()).toLocaleString())
-            .text('-'.repeat(width))
-            .align('LT'); // Left align for items
-
-          // Items
-          sale.items.forEach((item: any) => {
-            const total = (item.price_at_sale * item.quantity / 100).toFixed(2);
-            const priceStr = `${settings.currency_symbol}${total}`;
-            const qtyStr = `${item.quantity} x ${(item.price_at_sale / 100).toFixed(2)}`;
-            
-            // Print name on its own line if it's long, or just print it
-            printer.text(item.name);
-            // Print qty and price on the next line
-            printer.text(twoColumns(qtyStr, priceStr));
-          });
-
-          printer.align('CT').text('-'.repeat(width)).align('RT'); // Right align for totals
-
-          // Totals
-          const totalAmount = (sale.total_amount / 100).toFixed(2);
-          printer.text(`TOTAL: ${settings.currency_symbol}${totalAmount}`);
-          printer.text(`Payment: ${sale.payment_method?.toUpperCase() || 'CASH'}`);
-
-          printer.align('CT').text('-'.repeat(width));
-          
-          // Footer
-          if (settings.receipt_footer) {
-            printer.text(settings.receipt_footer);
-          }
-          
-          // Barcode - simplified or disabled if causing issues
-          printer.feed(1);
+        // Add a small delay to ensure printer is ready to receive data
+        setTimeout(() => {
           try {
-             printer.text(`*${sale.receipt_number}*`); // Text representation
-          } catch (e) {
-             console.warn('Barcode printing skipped', e);
-          }
-          
-          // Cut
-          printer.cut();
-          
-          // Close
-          // Important: Some printers need a small delay before closing to finish printing buffer
-          setTimeout(() => {
-            try {
-              printer.close();
-              resolve(true);
-            } catch (e) {
-              resolve(true); // Ignore close errors
+            // Initialize printer - minimal commands to avoid garbage
+            // Break chains to ensure commands are processed reliably
+            printer.hardware('INIT');
+            printer.align('CT');
+            printer.text(settings.store_name);
+            printer.text(settings.store_address);
+            printer.text(settings.store_phone);
+            printer.text('-'.repeat(width));
+            printer.text(`Receipt: ${sale.receipt_number}`);
+            printer.text(new Date(sale.created_at || Date.now()).toLocaleString());
+            printer.text('-'.repeat(width));
+            
+            // Flush header before items
+            printer.control('LF'); 
+            
+            // Explicitly set left alignment for items
+            printer.align('LT'); 
+
+            // Items
+            sale.items.forEach((item: any) => {
+              const price = Number(item.price_at_sale || item.price || 0);
+              const qty = Number(item.quantity || 0);
+              const total = (price * qty / 100).toFixed(2);
+              
+              // Ensure currency symbol is a string
+              const safeCurrency = currencySymbol || '';
+              const priceStr = `${safeCurrency}${total}`;
+              const qtyStr = `${qty} x ${(price / 100).toFixed(2)}`;
+              
+              // Print name
+              printer.text(item.name);
+              // Force a line feed to ensure the name prints and we move to the next line
+              printer.control('LF');
+              
+              // Print qty and price on the next line
+              const detailLine = twoColumns(qtyStr, priceStr);
+              printer.text(detailLine);
+              // Force another LF to ensure this line prints
+              printer.control('LF');
+            });
+
+            // Reset to center for totals
+            printer.align('CT');
+            printer.text('-'.repeat(width));
+            
+            // Right align for totals
+            printer.align('RT'); 
+
+            // Totals
+            const totalAmount = (Number(sale.total_amount || 0) / 100).toFixed(2);
+            printer.text(`TOTAL: ${currencySymbol}${totalAmount}`);
+            printer.text(`Payment: ${sale.payment_method?.toUpperCase() || 'CASH'}`);
+
+            printer.align('CT');
+            printer.text('-'.repeat(width));
+            
+            // Footer
+            if (settings.receipt_footer) {
+              printer.text(settings.receipt_footer);
             }
-          }, 1000);
-          
-        } catch (printError) {
-          console.error('Error sending commands to printer:', printError);
-          reject(printError);
-          try { printer.close(); } catch (e) {}
-        }
+            
+            // Barcode
+            printer.feed(1);
+            printer.align('CT');
+            // CODE128 is standard for alphanumeric receipt numbers
+            printer.barcode(sale.receipt_number, 'CODE128');
+            printer.feed(1);
+            
+            // Feed before cut to ensure footer/barcode isn't cut
+            printer.feed(4);
+            
+            // Cut
+            printer.cut();
+            
+            // Close
+            setTimeout(() => {
+              try {
+                printer.close();
+                resolve(true);
+              } catch (e) {
+                resolve(true);
+              }
+            }, 1000);
+            
+          } catch (printError) {
+            console.error('Error sending commands to printer:', printError);
+            reject(printError);
+            try { printer.close(); } catch (e) {}
+          }
+        }, 100); // 100ms delay after open
       });
     } catch (err) {
       console.error('Error initializing printer:', err);
@@ -390,13 +280,14 @@ export const generateReceiptHTML = async (sale: any) => {
           .items { margin-bottom: 10px; }
           .item { 
             display: flex; 
+            flex-direction: column;
             margin-bottom: 5px; 
-            align-items: flex-start;
+            border-bottom: 1px dotted #ccc;
+            padding-bottom: 2px;
           }
           
-          .col-name { flex: 1; padding-right: 5px; word-break: break-all; }
-          .col-qty { width: 30px; text-align: center; flex-shrink: 0; }
-          .col-price { width: 60px; text-align: right; flex-shrink: 0; }
+          .item-name { font-weight: bold; margin-bottom: 2px; }
+          .item-details { display: flex; justify-content: space-between; font-size: 11px; }
           
           .totals { margin-top: 10px; }
           .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
@@ -443,20 +334,20 @@ export const generateReceiptHTML = async (sale: any) => {
 
         <div class="divider"></div>
         
-        <div class="items-header">
-          <span class="col-name">Item</span>
-          <span class="col-qty">Qty</span>
-          <span class="col-price">Total</span>
-        </div>
-        
         <div class="items">
-          ${sale.items.map((item: any) => `
+          ${sale.items.map((item: any) => {
+            const price = Number(item.price_at_sale || item.price || 0);
+            const qty = Number(item.quantity || 0);
+            const total = (price * qty / 100).toFixed(2);
+            return `
             <div class="item">
-              <span class="col-name">${item.name}</span>
-              <span class="col-qty">${item.quantity}</span>
-              <span class="col-price">${settings.currency_symbol}${(item.price_at_sale * item.quantity / 100).toFixed(2)}</span>
+              <span class="item-name">${item.name}</span>
+              <div class="item-details">
+                <span>${qty} x ${settings.currency_symbol}${(price / 100).toFixed(2)}</span>
+                <span>${settings.currency_symbol}${total}</span>
+              </div>
             </div>
-          `).join('')}
+          `}).join('')}
         </div>
         
         <div class="divider"></div>
@@ -464,17 +355,17 @@ export const generateReceiptHTML = async (sale: any) => {
         <div class="totals">
           <div class="row">
             <span>Subtotal</span>
-            <span>${settings.currency_symbol}${(sale.total_amount / 100).toFixed(2)}</span>
+            <span>${settings.currency_symbol}${(Number(sale.total_amount || 0) / 100).toFixed(2)}</span>
           </div>
           ${settings.tax_percentage > 0 ? `
           <div class="row">
             <span>Tax (${settings.tax_percentage}%)</span>
-            <span>${settings.currency_symbol}${((sale.total_amount * settings.tax_percentage / 100) / 100).toFixed(2)}</span>
+            <span>${settings.currency_symbol}${((Number(sale.total_amount || 0) * settings.tax_percentage / 100) / 100).toFixed(2)}</span>
           </div>
           ` : ''}
           <div class="row total-row">
             <span>TOTAL</span>
-            <span>${settings.currency_symbol}${(sale.total_amount / 100).toFixed(2)}</span>
+            <span>${settings.currency_symbol}${(Number(sale.total_amount || 0) / 100).toFixed(2)}</span>
           </div>
           <div class="row" style="margin-top: 5px;">
             <span>Payment Method</span>

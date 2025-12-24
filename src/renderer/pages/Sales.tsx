@@ -216,7 +216,32 @@ const Sales: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSelectedSale(null)}>Close</Button>
-          <Button variant="contained" onClick={() => window.print()}>Print Receipt</Button>
+          <Button 
+            variant="contained" 
+            onClick={async () => {
+              if (!selectedSale) return;
+              
+              // Map sale data to match what the printer expects
+              const printerData = {
+                ...selectedSale,
+                items: selectedSale.items.map((item: any) => ({
+                  ...item,
+                  name: item.product_name, // Map product_name to name
+                  price: item.price_at_sale // Ensure price is available
+                }))
+              };
+              
+              try {
+                // @ts-ignore
+                await window.electronAPI.invoke('printer:print-receipt', printerData);
+              } catch (err) {
+                console.error('Failed to print receipt:', err);
+                alert('Failed to print receipt. Please check printer connection.');
+              }
+            }}
+          >
+            Print Receipt
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

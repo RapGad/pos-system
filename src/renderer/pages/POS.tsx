@@ -3,7 +3,8 @@ import {
   Typography, Box, Grid, Paper, TextField, List, ListItem,
   ListItemText, ListItemSecondaryAction, IconButton, Button,
   Divider, Dialog, DialogTitle, DialogContent, DialogActions,
-  Snackbar, Alert, Chip, Card, CardActionArea
+  Snackbar, Alert, Chip,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
@@ -17,7 +18,7 @@ import { useSettings } from '../hooks/useSettings';
 import ReceiptPreviewModal from '../components/ReceiptPreviewModal';
 
 const POS: React.FC = () => {
-  const { products, categories, fetchProducts, fetchCategories } = useProducts();
+  const { products, totalProducts, categories, fetchProducts, fetchCategories } = useProducts();
   const { cart, addToCart, removeFromCart, updateQuantity, total, checkout, clearCart } = useCart();
   const { settings } = useSettings();
   const currency = settings?.currency_symbol || '$';
@@ -28,6 +29,10 @@ const POS: React.FC = () => {
   const [successOpen, setSuccessOpen] = useState(false);
   const [lastReceiptNumber, setLastReceiptNumber] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  
+  // Pagination state
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
   
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
@@ -42,7 +47,9 @@ const POS: React.FC = () => {
     const timer = setTimeout(() => {
       fetchProducts({ 
         search: search,
-        categoryId: selectedCategory || undefined
+        categoryId: selectedCategory || undefined,
+        page,
+        pageSize: rowsPerPage
       });
     }, 300);
     return () => clearTimeout(timer);
@@ -61,6 +68,15 @@ const POS: React.FC = () => {
     }
     setSearch('');
     searchInputRef.current?.focus();
+  };
+
+  const handleChangePage = (_event: unknown, newPage: number) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
   };
 
   const handleCheckout = async (method: 'cash' | 'card') => {
@@ -280,61 +296,73 @@ const POS: React.FC = () => {
             </Box>
           </Paper>
 
-          {/* Product Grid */}
-          <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
-            <Grid container spacing={2}>
-              {products.map(product => (
-                <Grid size={{ xs: 6, sm: 4, md: 3 }} key={product.id}>
-                  <Card 
-                    sx={{ 
-                      height: '100%', 
-                      display: 'flex', 
-                      flexDirection: 'column',
-                      transition: 'transform 0.2s, box-shadow 0.2s',
-                      '&:hover': { 
-                        transform: 'translateY(-4px)',
-                        boxShadow: 4
-                      }
-                    }}
-                  >
-                    <CardActionArea 
-                      onClick={() => handleProductSelect(product)} 
-                      sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'stretch', p: 2 }}
-                    >
-                      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 1 }}>
-                        <Box 
-                          sx={{ 
-                            width: 60, 
-                            height: 60, 
-                            bgcolor: 'primary.light', 
-                            borderRadius: '50%', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            color: 'primary.main',
-                            fontWeight: 'bold',
-                            fontSize: '1.2rem',
-                            mb: 1
-                          }}
-                        >
-                          {product.name.charAt(0).toUpperCase()}
+          {/* Product Table */}
+          <Paper sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <TableContainer sx={{ flexGrow: 1 }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Product</TableCell>
+                    <TableCell>Category</TableCell>
+                    <TableCell align="right">Price</TableCell>
+                    <TableCell align="right">Stock</TableCell>
+                    <TableCell align="center">Action</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {products.map((product) => (
+                    <TableRow key={product.id} hover>
+                      <TableCell>
+                        <Box>
+                          <Typography variant="body2" fontWeight="bold">{product.name}</Typography>
+                          <Typography variant="caption" color="text.secondary">{product.barcode}</Typography>
                         </Box>
-                        <Typography variant="subtitle1" align="center" fontWeight="bold" sx={{ lineHeight: 1.2 }}>
-                          {product.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {product.category_name}
-                        </Typography>
-                      </Box>
-                      <Typography variant="h6" color="primary" align="center">
+                      </TableCell>
+                      <TableCell>{product.category_name}</TableCell>
+                      <TableCell align="right" sx={{ color: 'primary.main', fontWeight: 'bold' }}>
                         {currency}{(product.price / 100).toFixed(2)}
-                      </Typography>
-                    </CardActionArea>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          </Box>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Chip 
+                          label={product.stock_quantity} 
+                          size="small" 
+                          color={product.stock_quantity <= (settings?.low_stock_threshold || 10) ? 'error' : 'default'}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Button 
+                          variant="contained" 
+                          size="small" 
+                          startIcon={<AddIcon />}
+                          onClick={() => handleProductSelect(product)}
+                          disabled={product.stock_quantity <= 0}
+                        >
+                          Add
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {products.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                        <Typography color="text.secondary">No products found</Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <TablePagination
+              rowsPerPageOptions={[10, 25, 50]}
+              component="div"
+              count={totalProducts}
+              rowsPerPage={rowsPerPage}
+              page={page}
+              onPageChange={handleChangePage}
+              onRowsPerPageChange={handleChangeRowsPerPage}
+            />
+          </Paper>
         </Box>
       </Grid>
 
