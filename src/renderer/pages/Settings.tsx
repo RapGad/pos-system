@@ -12,6 +12,7 @@ interface Settings {
   store_phone: string;
   receipt_footer: string;
   printer_device_name: string;
+  printer_type: 'usb' | 'system';
   printer_paper_width: '80mm' | '58mm';
   currency_symbol: string;
   tax_percentage: number;
@@ -24,6 +25,7 @@ interface Printer {
   description: string;
   status: number;
   isDefault: boolean;
+  isSystem?: boolean;
 }
 
 const Settings: React.FC = () => {
@@ -33,6 +35,7 @@ const Settings: React.FC = () => {
     store_phone: '',
     receipt_footer: '',
     printer_device_name: '',
+    printer_type: 'usb',
     printer_paper_width: '80mm',
     currency_symbol: '$',
     tax_percentage: 0,
@@ -167,21 +170,37 @@ const Settings: React.FC = () => {
               helperText="This message will appear at the bottom of the receipt"
             />
           </Grid>
-          <Grid size={{ xs: 12 }}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               select
               fullWidth
-              label="Receipt Printer"
+              label="Printer Connection Type"
+              value={settings.printer_type || 'usb'}
+              onChange={(e) => setSettings({ ...settings, printer_type: e.target.value as 'usb' | 'system', printer_device_name: '' })}
+              helperText="Use 'System Printer' for Windows drivers"
+            >
+              <MenuItem value="usb">Direct USB (Raw)</MenuItem>
+              <MenuItem value="system">System Printer (Driver)</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              select
+              fullWidth
+              label="Select Printer"
               value={settings.printer_device_name}
               onChange={(e) => setSettings({ ...settings, printer_device_name: e.target.value })}
               helperText="Select the printer to use for receipts"
+              disabled={!settings.printer_type}
             >
               <MenuItem value="">
-                <em>Default System Printer</em>
+                <em>Select a printer...</em>
               </MenuItem>
-              {printers.map((printer) => (
+              {printers
+                .filter(p => settings.printer_type === 'system' ? p.isSystem : !p.isSystem)
+                .map((printer) => (
                 <MenuItem key={printer.name} value={printer.name}>
-                  {printer.displayName || printer.name}
+                  {printer.displayName || printer.name} {printer.isDefault ? '(Default)' : ''}
                 </MenuItem>
               ))}
             </TextField>

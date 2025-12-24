@@ -63,8 +63,75 @@ const generateBarcodeBase64 = async (text: string): Promise<string> => {
   });
 };
 
+export const getSystemPrinters = async () => {
+  try {
+    const { BrowserWindow } = require('electron');
+    // We need a window to access webContents
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return [];
+    
+    const printers = await win.webContents.getPrintersAsync();
+    return printers.map((p: any) => ({
+      name: p.name,
+      displayName: p.displayName,
+      description: p.description,
+      status: p.status,
+      isDefault: p.isDefault,
+      isSystem: true
+    }));
+  } catch (error) {
+    console.error('Failed to get system printers:', error);
+    return [];
+  }
+};
+
+export const printViaWebContents = async (html: string, printerName?: string): Promise<boolean> => {
+  return new Promise((resolve, reject) => {
+    try {
+      const { BrowserWindow } = require('electron');
+      
+      const workerWindow = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          nodeIntegration: true,
+          contextIsolation: false
+        }
+      });
+
+      workerWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+
+      workerWindow.webContents.on('did-finish-load', () => {
+        workerWindow.webContents.print({ 
+          silent: true, 
+          printBackground: true,
+          deviceName: printerName 
+        }, (success: boolean, errorType: string) => {
+          if (!success) {
+            console.error('Failed to print via WebContents:', errorType);
+            reject(new Error(errorType));
+          } else {
+            resolve(true);
+          }
+          workerWindow.close();
+        });
+      });
+    } catch (error) {
+      console.error('Error in printViaWebContents:', error);
+      reject(error);
+    }
+  });
+};
+
 export const printReceipt = async (sale: any) => {
   const settings = getSettings();
+  
+  // Dispatch based on printer type
+  if (settings.printer_type === 'system') {
+    const html = await generateReceiptHTML(sale);
+    return printViaWebContents(html, settings.printer_device_name);
+  }
+
+  // Fallback to USB logic
   // Sanitize currency symbol for physical print (Cedi sign often fails)
   const currencySymbol = settings.currency_symbol === '₵' ? 'GHS ' : settings.currency_symbol;
   
@@ -139,7 +206,7 @@ export const printReceipt = async (sale: any) => {
             
             // Explicitly set left alignment for items
             printer.align('LT'); 
-
+            
             // Items
             sale.items.forEach((item: any) => {
               const price = Number(item.price_at_sale || item.price || 0);
@@ -169,7 +236,7 @@ export const printReceipt = async (sale: any) => {
             
             // Right align for totals
             printer.align('RT'); 
-
+            
             // Totals
             const totalAmount = (Number(sale.total_amount || 0) / 100).toFixed(2);
             printer.text(`TOTAL: ${currencySymbol}${totalAmount}`);
@@ -392,35 +459,4 @@ export const generateReceiptHTML = async (sale: any) => {
   `;
 };
 
-export const printViaWebContents = async (html: string): Promise<boolean> => {
-  return new Promise((resolve, reject) => {
-    try {
-      const { BrowserWindow } = require('electron');
-      
-      const workerWindow = new BrowserWindow({
-        show: false,
-        webPreferences: {
-          nodeIntegration: true,
-          contextIsolation: false
-        }
-      });
 
-      workerWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
-
-      workerWindow.webContents.on('did-finish-load', () => {
-        workerWindow.webContents.print({ silent: true, printBackground: true }, (success: boolean, errorType: string) => {
-          if (!success) {
-            console.error('Failed to print via WebContents:', errorType);
-            reject(new Error(errorType));
-          } else {
-            resolve(true);
-          }
-          workerWindow.close();
-        });
-      });
-    } catch (error) {
-      console.error('Error in printViaWebContents:', error);
-      reject(error);
-    }
-  });
-};

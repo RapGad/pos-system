@@ -6,6 +6,7 @@ export interface Settings {
   store_phone: string;
   receipt_footer: string;
   printer_device_name: string;
+  printer_type: 'usb' | 'system';
   printer_paper_width: '80mm' | '58mm';
   currency_symbol: string;
   tax_percentage: number;
@@ -18,6 +19,7 @@ const DEFAULT_SETTINGS: Settings = {
   store_phone: '555-0123',
   receipt_footer: 'Thank you for your business!',
   printer_device_name: '',
+  printer_type: 'usb',
   printer_paper_width: '80mm',
   currency_symbol: '₵',
   tax_percentage: 0,
