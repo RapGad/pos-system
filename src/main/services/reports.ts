@@ -63,31 +63,42 @@ export const getInventoryValuation = () => {
   const lowStockProducts = db.prepare(`
     SELECT id, name, stock_quantity 
     FROM products 
-    WHERE is_active = 1 AND stock_quantity > 0 AND stock_quantity <= ?
-    LIMIT 5
+    WHERE is_active = 1 AND stock_quantity <= ?
+    ORDER BY stock_quantity ASC
   `).all(Number(threshold?.value || 10));
 
   return { ...stats, low_stock_products: lowStockProducts };
 };
 
-export const getSalesHistory = (days: number = 30, userId?: number) => {
+export const getSalesHistory = (days: number = 30, userId?: number, dateFrom?: string, dateTo?: string) => {
   let query = `
     SELECT 
-      date(created_at) as date,
-      SUM(total_amount) as revenue,
-      COUNT(*) as transactions
-    FROM sales
-    WHERE created_at >= date('now', ?)
+      date(s.created_at) as date,
+      COUNT(DISTINCT s.id) as transactions,
+      SUM(si.quantity * si.price_at_sale) as revenue,
+      SUM(si.quantity * (si.price_at_sale - p.cost)) as profit
+    FROM sales s
+    JOIN sale_items si ON s.id = si.sale_id
+    JOIN products p ON si.product_id = p.id
+    WHERE 1=1
   `;
   
-  const params: any[] = [`-${days} days`];
+  const params: any[] = [];
+
+  if (dateFrom && dateTo) {
+    query += ' AND date(s.created_at) BETWEEN ? AND ?';
+    params.push(dateFrom, dateTo);
+  } else {
+    query += " AND s.created_at >= date('now', ?)";
+    params.push(`-${days} days`);
+  }
   
   if (userId) {
-    query += ' AND user_id = ?';
+    query += ' AND s.user_id = ?';
     params.push(userId);
   }
   
-  query += ' GROUP BY date(created_at) ORDER BY date ASC';
+  query += ' GROUP BY date(s.created_at) ORDER BY date ASC';
   
   return db.prepare(query).all(...params);
 };

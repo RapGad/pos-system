@@ -35,6 +35,8 @@ const Reports: React.FC = () => {
     }
   }, [date, fetchDailySales, fetchProductPerformance, fetchInventoryValuation, isCashier, user?.id, tab]);
 
+  const totalProfit = productPerformance.reduce((sum, item) => sum + item.profit, 0);
+
   const handleExportSalesCSV = () => {
     const headers = ['Product', 'Category', 'Units Sold', 'Revenue', 'Profit'];
     const csvData = productPerformance.map(item => [
@@ -51,7 +53,7 @@ const Reports: React.FC = () => {
       ['Total Revenue', (dailySales?.total_revenue || 0) / 100],
       ['Total Transactions', dailySales?.total_transactions || 0],
       ['Cash Total', (dailySales?.cash_total || 0) / 100],
-      ['Card Total', (dailySales?.card_total || 0) / 100],
+      ['Total Profit', (totalProfit / 100).toFixed(2)],
     ];
 
     const csvContent = [headers, ...csvData, ...summary].map(e => e.join(",")).join("\n");
@@ -141,10 +143,10 @@ const Reports: React.FC = () => {
             </Paper>
           </Grid>
           <Grid size={{ xs: 12, md: 3 }}>
-            <Paper sx={{ p: 2, textAlign: 'center', borderTop: 4, borderColor: 'warning.main' }}>
-              <Typography color="textSecondary" variant="body2">Card Payments</Typography>
+            <Paper sx={{ p: 2, textAlign: 'center', borderTop: 4, borderColor: 'secondary.main' }}>
+              <Typography color="textSecondary" variant="body2">Total Profit</Typography>
               <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
-                {currency}{((dailySales?.card_total || 0) / 100).toFixed(2)}
+                {currency}{(totalProfit / 100).toFixed(2)}
               </Typography>
             </Paper>
           </Grid>

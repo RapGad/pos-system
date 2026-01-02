@@ -19,6 +19,7 @@ export interface SalesHistory {
   date: string;
   revenue: number;
   transactions: number;
+  profit: number;
 }
 
 export interface InventoryValuation {
@@ -61,11 +62,11 @@ export const useReports = () => {
     }
   }, []);
 
-  const fetchSalesHistory = useCallback(async (days: number = 30, userId?: number) => {
+  const fetchSalesHistory = useCallback(async (days: number = 30, userId?: number, dateFrom?: string, dateTo?: string) => {
     setLoading(true);
     try {
       // @ts-ignore
-      const result = await window.electronAPI.invoke('reports:sales-history', { days, userId });
+      const result = await window.electronAPI.invoke('reports:sales-history', { days, userId, dateFrom, dateTo });
       setSalesHistory(result);
     } catch (error) {
       console.error('Failed to fetch sales history:', error);
