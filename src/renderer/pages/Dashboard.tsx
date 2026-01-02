@@ -1,10 +1,9 @@
 import React, { useEffect } from 'react';
 import { Typography, Box, Grid, Card, CardContent, useTheme, List, ListItem, ListItemText, TextField } from '@mui/material';
-import { 
-  TrendingUp as TrendingUpIcon, 
+  import {
+    TrendingUp as TrendingUpIcon, 
   ShoppingCart as ShoppingCartIcon, 
   AttachMoney as AttachMoneyIcon,
-  Inventory as InventoryIcon,
   Warning as WarningIcon
 } from '@mui/icons-material';
 import { useReports } from '../hooks/useReports';
