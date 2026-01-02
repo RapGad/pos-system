@@ -73,7 +73,18 @@ export const useCart = () => {
       payment_method: paymentMethod,
       customer_name: customerName,
       user_id: user.id,
-      created_at: new Date().toLocaleString('sv').replace(' ', 'T'), // Send local time in ISO-like format (YYYY-MM-DDTHH:mm:ss)
+      // Manually format local time as YYYY-MM-DDTHH:mm:ss to ensure consistency across all locales
+      created_at: (() => {
+        const now = new Date();
+        const pad = (num: number) => num.toString().padStart(2, '0');
+        const year = now.getFullYear();
+        const month = pad(now.getMonth() + 1);
+        const day = pad(now.getDate());
+        const hours = pad(now.getHours());
+        const minutes = pad(now.getMinutes());
+        const seconds = pad(now.getSeconds());
+        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+      })(),
       items: cart.map((item) => ({
         product_id: item.id,
         quantity: item.quantity,

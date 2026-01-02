@@ -113,7 +113,17 @@ const POS: React.FC = () => {
       items: currentItems,
       payment_method: method,
       customer_name: customerName,
-      created_at: new Date().toISOString()
+      created_at: (() => {
+        const now = new Date();
+        const pad = (num: number) => num.toString().padStart(2, '0');
+        const year = now.getFullYear();
+        const month = pad(now.getMonth() + 1);
+        const day = pad(now.getDate());
+        const hours = pad(now.getHours());
+        const minutes = pad(now.getMinutes());
+        const seconds = pad(now.getSeconds());
+        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+      })()
     };
 
     const result = await checkout(method, customerName);
