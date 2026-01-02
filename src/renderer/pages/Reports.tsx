@@ -23,7 +23,7 @@ const Reports: React.FC = () => {
   const currency = settings?.currency_symbol || '$';
   
   const [tab, setTab] = useState(0);
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(new Date().toLocaleDateString('en-CA'));
 
   useEffect(() => {
     const userId = isCashier ? user?.id : undefined;

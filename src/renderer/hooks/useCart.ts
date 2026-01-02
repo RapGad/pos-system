@@ -73,6 +73,7 @@ export const useCart = () => {
       payment_method: paymentMethod,
       customer_name: customerName,
       user_id: user.id,
+      created_at: new Date().toLocaleString('sv').replace(' ', 'T'), // Send local time in ISO-like format (YYYY-MM-DDTHH:mm:ss)
       items: cart.map((item) => ({
         product_id: item.id,
         quantity: item.quantity,
