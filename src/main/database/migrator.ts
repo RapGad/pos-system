@@ -23,6 +23,19 @@ export const runMigrations = () => {
     } catch (err) {
       console.error('Failed to migrate sales table:', err);
     }
+
+    // Migration: Add expiry_date to products if it doesn't exist
+    try {
+      const tableInfo = db.prepare("PRAGMA table_info(products)").all() as any[];
+      const hasExpiryDate = tableInfo.some(col => col.name === 'expiry_date');
+      
+      if (!hasExpiryDate) {
+        console.log('Migrating: Adding expiry_date to products table...');
+        db.prepare("ALTER TABLE products ADD COLUMN expiry_date DATE").run();
+      }
+    } catch (err) {
+      console.error('Failed to migrate products table:', err);
+    }
     
     // Check if we need to seed initial data
     const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };

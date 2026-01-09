@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Typography, Box, Button, Paper, IconButton, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, MenuItem, Grid, List,
   ListItem, ListItemText, ListItemSecondaryAction, Divider, Alert, Snackbar,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
+  Checkbox, FormControlLabel
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
@@ -18,7 +20,7 @@ const Inventory: React.FC = () => {
   const isCashier = user?.role === 'cashier';
   const { 
     products, totalProducts, categories, fetchProducts, createProduct, updateProduct, deleteProduct,
-    createCategory, updateCategory, deleteCategory 
+    bulkCreateProducts, createCategory, updateCategory, deleteCategory 
   } = useProducts();
   const { settings } = useSettings();
   const currency = settings?.currency_symbol || '$';
@@ -29,6 +31,8 @@ const Inventory: React.FC = () => {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Pagination state
   const [page, setPage] = useState(0);
@@ -40,12 +44,14 @@ const Inventory: React.FC = () => {
     category_id: '',
     price: '',
     cost: '',
-    stock_quantity: ''
+    stock_quantity: '',
+    expiry_date: ''
   });
   const [filters, setFilters] = useState({
     search: '',
     categoryId: '',
-    stockStatus: 'all' as 'all' | 'low' | 'out'
+    stockStatus: 'all' as 'all' | 'low' | 'out',
+    includeInactive: false
   });
 
   // Fetch products when filters or pagination change
@@ -54,6 +60,7 @@ const Inventory: React.FC = () => {
       search: filters.search,
       categoryId: filters.categoryId === '' ? undefined : Number(filters.categoryId),
       stockStatus: filters.stockStatus,
+      includeInactive: filters.includeInactive,
       page,
       pageSize: rowsPerPage
     });
@@ -74,28 +81,99 @@ const Inventory: React.FC = () => {
     setPage(0);
   };
 
-  const handleExportCSV = () => {
-    const headers = ['ID', 'Barcode', 'Name', 'Category', 'Cost', 'Price', 'Stock'];
-    const csvData = products.map(p => [
-      p.id,
-      p.barcode,
-      p.name,
-      p.category_name,
-      (p.cost / 100).toFixed(2),
-      (p.price / 100).toFixed(2),
-      p.stock_quantity
-    ]);
-    
-    const csvContent = [headers, ...csvData].map(e => e.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `inventory_export_${new Date().toLocaleDateString('en-CA')}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleExportCSV = async () => {
+    try {
+      // Fetch all products matching current filters but without pagination
+      // @ts-ignore
+      const result = await window.electronAPI.invoke('products:get-all', {
+        search: filters.search,
+        categoryId: filters.categoryId === '' ? undefined : Number(filters.categoryId),
+        stockStatus: filters.stockStatus,
+        includeInactive: filters.includeInactive,
+        page: 0,
+        pageSize: 1000000 // Large enough to get all
+      });
+
+      const exportProducts = Array.isArray(result) ? result : result.products;
+      const headers = ['ID', 'Barcode', 'Name', 'Category', 'Cost', 'Price', 'Stock', 'Expiry Date', 'Status'];
+      const csvData = exportProducts.map((p: any) => [
+        p.id,
+        `"${p.barcode || ''}"`, // Wrap barcode in quotes to prevent scientific notation in Excel
+        `"${p.name}"`,
+        `"${p.category_name || ''}"`,
+        (p.cost / 100).toFixed(2),
+        (p.price / 100).toFixed(2),
+        p.stock_quantity,
+        p.expiry_date || '',
+        p.is_active ? 'Active' : 'Inactive'
+      ]);
+      
+      const csvContent = [headers, ...csvData].map(e => e.join(",")).join("\n");
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `inventory_export_${new Date().toLocaleDateString('en-CA')}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Failed to export CSV:', err);
+      setError('Failed to export CSV');
+    }
+  };
+
+  const handleImportExcel = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+        if (jsonData.length === 0) {
+          setError('The Excel file is empty');
+          return;
+        }
+
+        // Map Excel columns to our product structure
+        // Expected columns: Barcode, Name, Category, Cost, Price, Stock, Expiry Date
+        const productsToImport = jsonData.map((row: any) => ({
+          barcode: row.Barcode || row.barcode || '',
+          name: row.Name || row.name,
+          category: row.Category || row.category || 'Uncategorized',
+          cost: row.Cost || row.cost || 0,
+          price: row.Price || row.price || 0,
+          stock_quantity: row.Stock || row.stock || row.Quantity || row.quantity || 0,
+          expiry_date: row['Expiry Date'] || row['expiry_date'] || row.ExpiryDate || row.expiryDate || null
+        })).filter(p => p.name); // Ensure name exists
+
+        if (productsToImport.length === 0) {
+          setError('No valid products found in the Excel file');
+          return;
+        }
+
+        const result = await bulkCreateProducts(productsToImport, user?.role);
+
+        if (result) {
+          setSuccess(`Successfully imported ${result.importedCount} products. ${result.skippedCount} skipped.`);
+        } else {
+          setError('Failed to import products');
+        }
+      } catch (err: any) {
+        console.error('Import failed:', err);
+        setError(err.message || 'Failed to import Excel file');
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   const handleOpen = (product?: Product) => {
@@ -107,7 +185,8 @@ const Inventory: React.FC = () => {
         category_id: product.category_id.toString(),
         price: (product.price / 100).toFixed(2),
         cost: (product.cost / 100).toFixed(2),
-        stock_quantity: product.stock_quantity.toString()
+        stock_quantity: product.stock_quantity.toString(),
+        expiry_date: product.expiry_date || ''
       });
     } else {
       setEditingProduct(null);
@@ -117,7 +196,8 @@ const Inventory: React.FC = () => {
         category_id: '',
         price: '',
         cost: '',
-        stock_quantity: ''
+        stock_quantity: '',
+        expiry_date: ''
       });
     }
     setOpen(true);
@@ -134,7 +214,8 @@ const Inventory: React.FC = () => {
       category_id: parseInt(formData.category_id),
       price: Math.round(parseFloat(formData.price) * 100), // Convert to cents
       cost: Math.round(parseFloat(formData.cost) * 100),
-      stock_quantity: parseInt(formData.stock_quantity)
+      stock_quantity: parseInt(formData.stock_quantity),
+      expiry_date: formData.expiry_date || undefined
     };
 
     if (editingProduct) {
@@ -180,6 +261,14 @@ const Inventory: React.FC = () => {
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h4">Inventory Management</Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
+              <input
+                type="file"
+                accept=".xlsx, .xls"
+                style={{ display: 'none' }}
+                ref={fileInputRef}
+                onChange={handleImportExcel}
+              />
+              <Button variant="outlined" onClick={() => fileInputRef.current?.click()}>Import Excel</Button>
               <Button variant="outlined" onClick={handleExportCSV}>Export CSV</Button>
               {!isCashier && (
                 <>
@@ -232,6 +321,17 @@ const Inventory: React.FC = () => {
               <MenuItem value="low">Low Stock</MenuItem>
               <MenuItem value="out">Out of Stock</MenuItem>
             </TextField>
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={filters.includeInactive}
+                  onChange={(e) => handleFilterChange('includeInactive', e.target.checked)}
+                  size="small"
+                />
+              }
+              label={<Typography variant="body2">Show Inactive</Typography>}
+              sx={{ ml: 1 }}
+            />
           </Box>
 
           {/* Product Table */}
@@ -245,19 +345,24 @@ const Inventory: React.FC = () => {
                   <TableCell align="right">Cost</TableCell>
                   <TableCell align="right">Price</TableCell>
                   <TableCell align="right">Stock</TableCell>
+                  <TableCell>Expiry Date</TableCell>
                   {!isCashier && <TableCell align="right">Actions</TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {products.map((product) => {
                   const isLowStock = product.stock_quantity <= (settings?.low_stock_threshold || 10);
+                  const isInactive = product.is_active === 0;
                   return (
                     <TableRow 
                       key={product.id} 
                       hover
                       sx={{ 
-                        bgcolor: isLowStock ? '#fff9f9' : 'inherit',
-                        '& td': { color: isLowStock ? 'error.main' : 'inherit' }
+                        bgcolor: isInactive ? '#f5f5f5' : (isLowStock ? '#fff9f9' : 'inherit'),
+                        '& td': { 
+                          color: isInactive ? 'text.disabled' : (isLowStock ? 'error.main' : 'inherit'),
+                          textDecoration: isInactive ? 'line-through' : 'none'
+                        }
                       }}
                     >
                       <TableCell>{product.barcode || '-'}</TableCell>
@@ -268,6 +373,7 @@ const Inventory: React.FC = () => {
                       <TableCell align="right" sx={{ fontWeight: isLowStock ? 'bold' : 'normal' }}>
                         {product.stock_quantity}
                       </TableCell>
+                      <TableCell>{product.expiry_date || '-'}</TableCell>
                       {!isCashier && (
                         <TableCell align="right">
                           <IconButton onClick={() => handleOpen(product)} color="primary" size="small">
@@ -366,6 +472,16 @@ const Inventory: React.FC = () => {
                 onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
               />
             </Grid>
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                label="Expiry Date"
+                type="date"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={formData.expiry_date}
+                onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
+              />
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -429,6 +545,17 @@ const Inventory: React.FC = () => {
       >
         <Alert onClose={() => setError(null)} severity="error" variant="filled">
           {error}
+        </Alert>
+      </Snackbar>
+
+      <Snackbar 
+        open={!!success} 
+        autoHideDuration={6000} 
+        onClose={() => setSuccess(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={() => setSuccess(null)} severity="success" variant="filled">
+          {success}
         </Alert>
       </Snackbar>
     </Grid>

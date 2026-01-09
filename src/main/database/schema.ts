@@ -20,6 +20,7 @@ export const schema = `
     price INTEGER NOT NULL, -- Stored in cents
     cost INTEGER NOT NULL, -- Stored in cents
     stock_quantity INTEGER DEFAULT 0,
+    expiry_date DATE,
     is_active BOOLEAN DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (category_id) REFERENCES categories(id)

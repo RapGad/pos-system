@@ -1,0 +1,10 @@
+Expiry Date
+expiry_date
+ExpiryDate
+expiryDate
+Date Format
+The expiry date should be in YYYY-MM-DD format (ISO 8601 standard), for example:
+
+2026-12-31
+2025-06-15
+2027-03-20

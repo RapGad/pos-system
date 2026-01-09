@@ -9,6 +9,7 @@ export interface Product {
   price: number;
   cost: number;
   stock_quantity: number;
+  expiry_date?: string;
   is_active: number;
 }
 
@@ -23,7 +24,7 @@ export const useProducts = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const fetchProducts = useCallback(async (filters: { search?: string; categoryId?: number; stockStatus?: 'all' | 'low' | 'out'; page?: number; pageSize?: number } = {}) => {
+  const fetchProducts = useCallback(async (filters: { search?: string; categoryId?: number; stockStatus?: 'all' | 'low' | 'out'; includeInactive?: boolean; page?: number; pageSize?: number } = {}) => {
     setLoading(true);
     try {
       // @ts-ignore
@@ -89,6 +90,19 @@ export const useProducts = () => {
     }
   };
 
+  const bulkCreateProducts = async (products: any[], userRole?: string) => {
+    try {
+      // @ts-ignore
+      const result = await window.electronAPI.invoke('products:bulk-create', { products, userRole });
+      fetchProducts();
+      fetchCategories();
+      return result;
+    } catch (error) {
+      console.error('Failed to bulk create products:', error);
+      return null;
+    }
+  };
+
   const createCategory = async (name: string, userRole?: string) => {
     try {
       // @ts-ignore
@@ -140,6 +154,7 @@ export const useProducts = () => {
     createProduct,
     updateProduct,
     deleteProduct,
+    bulkCreateProducts,
     createCategory,
     updateCategory,
     deleteCategory

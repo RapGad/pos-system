@@ -8,7 +8,8 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
-  deleteProduct 
+  deleteProduct,
+  bulkCreateProducts
 } from '../services/products.js';
 
 export const registerProductHandlers = () => {
@@ -21,6 +22,10 @@ export const registerProductHandlers = () => {
   ipcMain.handle('products:create', (_, { product, userRole }) => {
     if (userRole === 'cashier') throw new Error('Unauthorized');
     return createProduct(product);
+  });
+  ipcMain.handle('products:bulk-create', (_, { products, userRole }) => {
+    if (userRole === 'cashier') throw new Error('Unauthorized');
+    return bulkCreateProducts(products);
   });
   ipcMain.handle('products:update', (_, { id, product, userRole }) => {
     if (userRole === 'cashier') throw new Error('Unauthorized');

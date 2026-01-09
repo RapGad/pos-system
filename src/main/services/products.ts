@@ -8,6 +8,7 @@ export interface Product {
   price: number;
   cost: number;
   stock_quantity: number;
+  expiry_date?: string;
   is_active: number;
 }
 
@@ -63,8 +64,8 @@ export const getProductByBarcode = (barcode: string) => {
 
 export const createProduct = (product: Omit<Product, 'id'>) => {
   const stmt = db.prepare(`
-    INSERT INTO products (barcode, name, category_id, price, cost, stock_quantity)
-    VALUES (@barcode, @name, @category_id, @price, @cost, @stock_quantity)
+    INSERT INTO products (barcode, name, category_id, price, cost, stock_quantity, expiry_date)
+    VALUES (@barcode, @name, @category_id, @price, @cost, @stock_quantity, @expiry_date)
   `);
   return stmt.run(product);
 };
@@ -103,4 +104,64 @@ export const deleteCategory = (id: number) => {
 export const deleteProduct = (id: number) => {
   // Soft delete to avoid foreign key constraint issues and preserve history
   return db.prepare('UPDATE products SET is_active = 0 WHERE id = ?').run(id);
+};
+
+export const bulkCreateProducts = (products: any[]) => {
+  const insertProduct = db.prepare(`
+    INSERT INTO products (barcode, name, category_id, price, cost, stock_quantity, expiry_date)
+    VALUES (@barcode, @name, @category_id, @price, @cost, @stock_quantity, @expiry_date)
+  `);
+
+  const findCategory = db.prepare('SELECT id FROM categories WHERE name = ?');
+  const insertCategory = db.prepare('INSERT INTO categories (name) VALUES (?)');
+
+  const transaction = db.transaction((items: any[]) => {
+    let importedCount = 0;
+    let skippedCount = 0;
+
+    for (const item of items) {
+      try {
+        // Handle category
+        let categoryId: number;
+        const categoryName = item.category?.trim();
+        
+        if (!categoryName) {
+          // Default to "Uncategorized" if no category provided
+          const uncategorized = findCategory.get('Uncategorized') as { id: number } | undefined;
+          if (uncategorized) {
+            categoryId = uncategorized.id;
+          } else {
+            const result = insertCategory.run('Uncategorized');
+            categoryId = result.lastInsertRowid as number;
+          }
+        } else {
+          const existing = findCategory.get(categoryName) as { id: number } | undefined;
+          if (existing) {
+            categoryId = existing.id;
+          } else {
+            const result = insertCategory.run(categoryName);
+            categoryId = result.lastInsertRowid as number;
+          }
+        }
+
+        // Insert product
+        insertProduct.run({
+          barcode: item.barcode?.toString() || null,
+          name: item.name,
+          category_id: categoryId,
+          price: Math.round(parseFloat(item.price) * 100),
+          cost: Math.round(parseFloat(item.cost) * 100),
+          stock_quantity: parseInt(item.stock_quantity) || 0,
+          expiry_date: item.expiry_date || null
+        });
+        importedCount++;
+      } catch (error) {
+        console.error('Failed to import item:', item.name, error);
+        skippedCount++;
+      }
+    }
+    return { importedCount, skippedCount };
+  });
+
+  return transaction(products);
 };
