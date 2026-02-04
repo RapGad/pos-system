@@ -256,6 +256,17 @@ export const printReceipt = async (sale: any) => {
             const totalAmount = (Number(sale.total_amount || 0) / 100).toFixed(2);
             printer.text(`TOTAL: ${currencySymbol}${totalAmount}`);
             printer.text(`Payment: ${sale.payment_method?.toUpperCase() || 'CASH'}`);
+            
+            // Show amount paid and change for cash transactions
+            if (sale.amount_paid != null) {
+              const amountPaid = (Number(sale.amount_paid) / 100).toFixed(2);
+              printer.text(`Amount Paid: ${currencySymbol}${amountPaid}`);
+            }
+            
+            if (sale.change_given != null) {
+              const changeGiven = (Number(sale.change_given) / 100).toFixed(2);
+              printer.text(`Change: ${currencySymbol}${changeGiven}`);
+            }
 
             printer.align('CT');
             printer.text('-'.repeat(width));
@@ -424,6 +435,18 @@ export const generateReceiptHTML = async (sale: any) => {
             <td>Payment</td>
             <td class="right">${sale.payment_method?.toUpperCase() || 'CASH'}</td>
           </tr>
+          ${sale.amount_paid != null ? `
+          <tr>
+            <td>Amount Paid</td>
+            <td class="right">${settings.currency_symbol}${(Number(sale.amount_paid) / 100).toFixed(2)}</td>
+          </tr>
+          ` : ''}
+          ${sale.change_given != null ? `
+          <tr>
+            <td>Change</td>
+            <td class="right bold">${settings.currency_symbol}${(Number(sale.change_given) / 100).toFixed(2)}</td>
+          </tr>
+          ` : ''}
         </table>
         
         <div class="center" style="margin-top: 4mm;">

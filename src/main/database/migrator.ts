@@ -36,6 +36,25 @@ export const runMigrations = () => {
     } catch (err) {
       console.error('Failed to migrate products table:', err);
     }
+
+    // Migration: Add amount_paid and change_given to sales if they don't exist
+    try {
+      const tableInfo = db.prepare("PRAGMA table_info(sales)").all() as any[];
+      const hasAmountPaid = tableInfo.some(col => col.name === 'amount_paid');
+      const hasChangeGiven = tableInfo.some(col => col.name === 'change_given');
+      
+      if (!hasAmountPaid) {
+        console.log('Migrating: Adding amount_paid to sales table...');
+        db.prepare("ALTER TABLE sales ADD COLUMN amount_paid INTEGER").run();
+      }
+      
+      if (!hasChangeGiven) {
+        console.log('Migrating: Adding change_given to sales table...');
+        db.prepare("ALTER TABLE sales ADD COLUMN change_given INTEGER").run();
+      }
+    } catch (err) {
+      console.error('Failed to migrate sales table for payment tracking:', err);
+    }
     
     // Check if we need to seed initial data
     const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };

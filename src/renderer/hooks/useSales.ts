@@ -8,6 +8,8 @@ export interface Sale {
   user_id: number;
   username: string;
   customer_name?: string;
+  amount_paid?: number;
+  change_given?: number;
   created_at: string;
 }
 

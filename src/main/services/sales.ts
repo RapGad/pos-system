@@ -12,6 +12,8 @@ export interface Sale {
   total_amount: number;
   payment_method: string;
   customer_name?: string;
+  amount_paid?: number;
+  change_given?: number;
   user_id: number;
   created_at?: string;
   items: SaleItem[];
@@ -34,8 +36,8 @@ export const createSale = (sale: Sale) => {
     // 1. Create Sale Record
     // If created_at is provided, use it. Otherwise default to CURRENT_TIMESTAMP (UTC)
     const insertSale = db.prepare(`
-      INSERT INTO sales (receipt_number, total_amount, payment_method, customer_name, user_id, created_at)
-      VALUES (@receipt_number, @total_amount, @payment_method, @customer_name, @user_id, COALESCE(@created_at, CURRENT_TIMESTAMP))
+      INSERT INTO sales (receipt_number, total_amount, payment_method, customer_name, amount_paid, change_given, user_id, created_at)
+      VALUES (@receipt_number, @total_amount, @payment_method, @customer_name, @amount_paid, @change_given, @user_id, COALESCE(@created_at, CURRENT_TIMESTAMP))
     `);
     const info = insertSale.run(saleData);
     const saleId = info.lastInsertRowid;

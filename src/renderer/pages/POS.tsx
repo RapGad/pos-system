@@ -37,6 +37,9 @@ const POS: React.FC = () => {
   // Customer Name state
   const [customerName, setCustomerName] = useState('');
   
+  // Amount Paid state for cash transactions
+  const [amountPaid, setAmountPaid] = useState<string>('');
+  
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [currentSale, setCurrentSale] = useState<any>(null);
@@ -83,7 +86,17 @@ const POS: React.FC = () => {
   };
 
   const handleCheckout = async (method: 'cash' | 'card') => {
+    // Validate amount paid for cash transactions
+    if (method === 'cash') {
+      const amountPaidCents = Math.round(parseFloat(amountPaid || '0') * 100);
+      if (!amountPaid || amountPaidCents < total) {
+        setError('Amount paid must be greater than or equal to the total');
+        return;
+      }
+    }
+
     // Check for printers first
+    /*
     try {
       // @ts-ignore
       const printers = await window.electronAPI.invoke('printer:get-printers');
@@ -102,45 +115,27 @@ const POS: React.FC = () => {
       setPaymentOpen(false);
       return;
     }
+    */
 
-    const currentTotal = total;
-    const currentItems = [...cart];
     const receiptNum = `REC-${Date.now()}`; // Generate receipt number
+    const amountPaidCents = method === 'cash' && amountPaid ? Math.round(parseFloat(amountPaid) * 100) : undefined;
     
-    const saleData = {
-      receipt_number: receiptNum,
-      total_amount: currentTotal,
-      items: currentItems,
-      payment_method: method,
-      customer_name: customerName,
-      created_at: (() => {
-        const now = new Date();
-        const pad = (num: number) => num.toString().padStart(2, '0');
-        const year = now.getFullYear();
-        const month = pad(now.getMonth() + 1);
-        const day = pad(now.getDate());
-        const hours = pad(now.getHours());
-        const minutes = pad(now.getMinutes());
-        const seconds = pad(now.getSeconds());
-        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-      })()
-    };
-
-    const result = await checkout(method, customerName);
+    const result = await checkout(method, customerName, amountPaidCents);
     
-    if (result.success) {
+    if (result.success && result.saleData) {
       setPaymentOpen(false);
       setLastReceiptNumber(receiptNum); // Store for display
       setPrinterError(false); // Reset printer error
       setCustomerName(''); // Reset customer name
+      setAmountPaid(''); // Reset amount paid
       
       try {
         // Generate preview HTML
         // @ts-ignore
-        const html = await window.electronAPI.invoke('printer:generate-preview', saleData);
+        const html = await window.electronAPI.invoke('printer:generate-preview', result.saleData);
         
         setPreviewHtml(html);
-        setCurrentSale(saleData);
+        setCurrentSale(result.saleData);
         setPreviewOpen(true);
       } catch (err) {
         console.error('Preview generation failed:', err);
@@ -398,6 +393,22 @@ const POS: React.FC = () => {
             sx={{ mb: 2, mt: 1 }}
           />
           
+          <TextField
+            fullWidth
+            label="Amount Paid (Cash Only)"
+            variant="outlined"
+            type="number"
+            value={amountPaid}
+            onChange={(e) => setAmountPaid(e.target.value)}
+            placeholder={(total / 100).toFixed(2)}
+            inputProps={{ step: '0.01', min: '0' }}
+            sx={{ mb: 1 }}
+            helperText={amountPaid && parseFloat(amountPaid) >= (total / 100) 
+              ? `Change: ${currency}${(parseFloat(amountPaid) - (total / 100)).toFixed(2)}`
+              : 'Enter amount for cash payments'
+            }
+          />
+          
           <Typography variant="body2" align="center" color="text.secondary" paragraph>
             Select payment method to complete sale
           </Typography>
@@ -479,6 +490,7 @@ const POS: React.FC = () => {
         onClose={handlePreviewClose}
         onPrint={handlePrintConfirm}
         printing={isPrinting}
+        saleData={currentSale}
       />
 
       </Grid>

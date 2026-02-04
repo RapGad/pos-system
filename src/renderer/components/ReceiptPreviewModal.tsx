@@ -12,6 +12,7 @@ import {
 import PrintIcon from '@mui/icons-material/Print';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import { useSettings } from '../hooks/useSettings';
 
 interface ReceiptPreviewModalProps {
   open: boolean;
@@ -19,6 +20,7 @@ interface ReceiptPreviewModalProps {
   onClose: () => void;
   onPrint: () => void;
   printing: boolean;
+  saleData?: any; // Sale data to show change prominently
 }
 
 const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({
@@ -26,8 +28,12 @@ const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({
   htmlContent,
   onClose,
   onPrint,
-  printing
+  printing,
+  saleData
 }) => {
+  const { settings } = useSettings();
+  const currency = settings?.currency_symbol || '₵';
+  
   return (
     <Dialog 
       open={open} 
@@ -75,6 +81,36 @@ const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({
           </Button>
         )}
       </Box>
+
+      {/* Prominent Change Display Banner - Only for cash with change */}
+      {saleData?.change_given != null && saleData.change_given > 0 && (
+        <Box sx={{
+          bgcolor: '#4caf50',
+          color: 'white',
+          p: 3,
+          textAlign: 'center',
+          boxShadow: 2
+        }}>
+          <Typography variant="h4" fontWeight="bold" gutterBottom>
+            CHANGE TO GIVE
+          </Typography>
+          <Typography variant="h2" fontWeight="bold" sx={{ 
+            fontSize: '3.5rem',
+            textShadow: '2px 2px 4px rgba(0,0,0,0.3)',
+            letterSpacing: '0.05em'
+          }}>
+            {currency}{(saleData.change_given / 100).toFixed(2)}
+          </Typography>
+          <Box sx={{ mt: 2, pt: 2, borderTop: '2px solid rgba(255,255,255,0.3)' }}>
+            <Typography variant="body1" sx={{ opacity: 0.95, mb: 0.5 }}>
+              Amount Paid: {currency}{(saleData.amount_paid / 100).toFixed(2)}
+            </Typography>
+            <Typography variant="body1" sx={{ opacity: 0.95 }}>
+              Total: {currency}{(saleData.total_amount / 100).toFixed(2)}
+            </Typography>
+          </Box>
+        </Box>
+      )}
 
       <DialogContent sx={{ 
         p: 0, 

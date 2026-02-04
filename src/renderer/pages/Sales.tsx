@@ -133,6 +133,7 @@ const Sales: React.FC = () => {
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>User</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Payment</TableCell>
               <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Total</TableCell>
+              <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Balance</TableCell>
               <TableCell align="center" sx={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -151,6 +152,15 @@ const Sales: React.FC = () => {
                   />
                 </TableCell>
                 <TableCell align="right">{currency}{(sale.total_amount / 100).toFixed(2)}</TableCell>
+                <TableCell align="right">
+                  {sale.change_given != null && sale.change_given > 0 ? (
+                    <Typography color="success.main" fontWeight="bold">
+                      {currency}{(sale.change_given / 100).toFixed(2)}
+                    </Typography>
+                  ) : (
+                    <Typography color="text.secondary">-</Typography>
+                  )}
+                </TableCell>
                 <TableCell align="center">
                   <IconButton onClick={() => handleViewDetails(sale.id)} color="primary">
                     <VisibilityIcon />
@@ -160,7 +170,7 @@ const Sales: React.FC = () => {
             ))}
             {sales.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} align="center">No sales found</TableCell>
+                <TableCell colSpan={7} align="center">No sales found</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -223,6 +233,22 @@ const Sales: React.FC = () => {
                           {currency}{(selectedSale.total_amount / 100).toFixed(2)}
                         </TableCell>
                       </TableRow>
+                      {selectedSale.amount_paid != null && (
+                        <TableRow>
+                          <TableCell colSpan={3} align="right">Amount Paid</TableCell>
+                          <TableCell align="right">
+                            {currency}{(selectedSale.amount_paid / 100).toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {selectedSale.change_given != null && selectedSale.change_given > 0 && (
+                        <TableRow sx={{ bgcolor: 'success.light' }}>
+                          <TableCell colSpan={3} align="right" sx={{ fontWeight: 'bold', color: 'success.dark' }}>Change Given</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold', color: 'success.dark' }}>
+                            {currency}{(selectedSale.change_given / 100).toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      )}
                     </TableBody>
                   </Table>
                 </TableContainer>

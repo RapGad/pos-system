@@ -64,10 +64,10 @@ export const useCart = () => {
 
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  const checkout = async (paymentMethod: 'cash' | 'card', customerName?: string): Promise<{ success: boolean; error?: string }> => {
+  const checkout = async (paymentMethod: 'cash' | 'card', customerName?: string, amountPaid?: number): Promise<{ success: boolean; error?: string; saleData?: any }> => {
     if (!user) return { success: false, error: 'User not authenticated' };
     
-    const saleData = {
+    const saleData: any = {
       receipt_number: `REC-${Date.now()}`, // Simple receipt number generation
       total_amount: total,
       payment_method: paymentMethod,
@@ -89,15 +89,22 @@ export const useCart = () => {
         product_id: item.id,
         quantity: item.quantity,
         price_at_sale: item.price,
-        discount: 0
+        discount: 0,
+        name: item.name // Add name for printer
       }))
     };
+
+    // Add payment tracking for cash transactions
+    if (paymentMethod === 'cash' && amountPaid != null) {
+      saleData.amount_paid = amountPaid;
+      saleData.change_given = amountPaid - total;
+    }
 
     try {
       // @ts-ignore
       await window.electronAPI.invoke('sales:create', saleData);
       clearCart();
-      return { success: true };
+      return { success: true, saleData };
     } catch (error: any) {
       console.error('Checkout failed:', error);
       return { success: false, error: error.message || 'Checkout failed' };
