@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import { Typography, Box, Grid, Card, CardContent, useTheme, List, ListItem, ListItemText, TextField } from '@mui/material';
   import {
     TrendingUp as TrendingUpIcon, 
-  ShoppingCart as ShoppingCartIcon, 
   AttachMoney as AttachMoneyIcon,
   Warning as WarningIcon
 } from '@mui/icons-material';
@@ -59,7 +58,6 @@ const Dashboard: React.FC = () => {
   }, [fetchSalesHistory, fetchInventoryValuation, user, startDate, endDate]);
 
   const totalRevenue = salesHistory.reduce((sum, day) => sum + day.revenue, 0);
-  const totalTransactions = salesHistory.reduce((sum, day) => sum + day.transactions, 0);
   const totalProfit = salesHistory.reduce((sum, day) => sum + day.profit, 0);
 
   return (
@@ -94,7 +92,7 @@ const Dashboard: React.FC = () => {
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <SummaryCard 
             title="Total Revenue" 
             value={`${currency}${((totalRevenue || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -102,15 +100,7 @@ const Dashboard: React.FC = () => {
             color={theme.palette.primary.main}
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-          <SummaryCard 
-            title="Total Transactions" 
-            value={totalTransactions}
-            icon={<ShoppingCartIcon />}
-            color={theme.palette.success.main}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <SummaryCard 
             title="Total Profit" 
             value={`${currency}${((totalProfit || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -120,14 +110,17 @@ const Dashboard: React.FC = () => {
         </Grid>
       </Grid>
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 8 }}>
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid size={{ xs: 12 }}>
           <DashboardChart 
             data={salesHistory} 
             title="Sales Trend" 
           />
         </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
+      </Grid>
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Card sx={{ height: 400, display: 'flex', flexDirection: 'column' }}>
             <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -147,6 +140,31 @@ const Dashboard: React.FC = () => {
                   ))
                 ) : (
                   <Typography variant="body2" color="text.secondary">No low stock items</Typography>
+                )}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card sx={{ height: 400, display: 'flex', flexDirection: 'column' }}>
+            <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <WarningIcon color="warning" sx={{ mr: 1 }} />
+                <Typography variant="h6">Expiring Soon (2 Months)</Typography>
+              </Box>
+              <List sx={{ overflow: 'auto', flexGrow: 1 }}>
+                {inventoryValuation?.expiring_products && inventoryValuation.expiring_products.length > 0 ? (
+                  inventoryValuation.expiring_products.map((p: any) => (
+                    <ListItem key={p.id} divider>
+                      <ListItemText 
+                        primary={p.name} 
+                        secondary={`Expires: ${new Date(p.expiry_date).toLocaleDateString()} | Stock: ${p.stock_quantity}`} 
+                        primaryTypographyProps={{ variant: 'body2', fontWeight: 'medium' }}
+                      />
+                    </ListItem>
+                  ))
+                ) : (
+                  <Typography variant="body2" color="text.secondary">No items expiring soon</Typography>
                 )}
               </List>
             </CardContent>

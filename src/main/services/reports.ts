@@ -67,7 +67,21 @@ export const getInventoryValuation = () => {
     ORDER BY stock_quantity ASC
   `).all(Number(threshold?.value || 10));
 
-  return { ...stats, low_stock_products: lowStockProducts };
+  // Products expiring within 2 months (60 days)
+  const expiringProducts = db.prepare(`
+    SELECT id, name, expiry_date, stock_quantity
+    FROM products
+    WHERE is_active = 1 
+      AND expiry_date IS NOT NULL 
+      AND date(expiry_date) <= date('now', '+2 months')
+    ORDER BY expiry_date ASC
+  `).all();
+
+  return { 
+    ...stats, 
+    low_stock_products: lowStockProducts,
+    expiring_products: expiringProducts
+  };
 };
 
 export const getSalesHistory = (days: number = 30, userId?: number, dateFrom?: string, dateTo?: string) => {

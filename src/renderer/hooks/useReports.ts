@@ -27,6 +27,7 @@ export interface InventoryValuation {
   total_retail_value: number;
   total_products: number;
   low_stock_products: Array<{ id: number; name: string; stock_quantity: number }>;
+  expiring_products: Array<{ id: number; name: string; expiry_date: string; stock_quantity: number }>;
 }
 
 export const useReports = () => {
